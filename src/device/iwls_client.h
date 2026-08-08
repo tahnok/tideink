@@ -8,7 +8,6 @@ enum class FetchStatus {
     kWifiFailed,
     kClockFailed,
     kHttpFailed,
-    kTlsFailed,
     kParseFailed,
 };
 

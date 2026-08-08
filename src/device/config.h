@@ -42,25 +42,6 @@
 // SIXTY_MINUTES. Hourly samples are ~10 kB for three days and plot smoothly.
 #define CURVE_RESOLUTION "SIXTY_MINUTES"
 
-// ---------------------------------------------------------------- TLS ------
-// How the API's certificate chain is verified:
-//
-//   IWLS_TLS_BUNDLE  the Mozilla root store that ships inside ESP-IDF (~200
-//                    roots, already compiled into the framework; costs about
-//                    64 kB of flash and survives the API rotating issuers)
-//   IWLS_TLS_PINNED  only IWLS_ROOT_CA below is trusted. Tighter, but the
-//                    clock stops working the day that root is retired
-//   IWLS_TLS_NONE    encrypted but unauthenticated; last resort for debugging
-#define IWLS_TLS_BUNDLE 0
-#define IWLS_TLS_PINNED 1
-#define IWLS_TLS_NONE 2
-
-#define IWLS_TLS_MODE IWLS_TLS_BUNDLE
-
-// Only used when IWLS_TLS_MODE is IWLS_TLS_PINNED. `sh tools/fetch_ca.sh`
-// prints a PEM literal ready to paste in.
-#define IWLS_ROOT_CA ""
-
 // --------------------------------------------------------------- schedule ---
 // Redraw at least this often so the countdown stays honest, and at most this
 // often so the panel is not refreshed needlessly.

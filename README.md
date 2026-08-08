@@ -131,40 +131,25 @@ warning strip instead; the footer always says how old the data is.
 ## Configuration
 
 Everything lives in [`src/device/config.h`](src/device/config.h): station and
-time zone, refresh schedule, requested window and resolution, pin map, battery
-curve, and the optional TLS root certificate. `secrets.h` is included first, so
-a `#define` there overrides any of it without showing up in `git status`.
+time zone, refresh schedule, requested window and resolution, pin map and
+battery curve. `secrets.h` is included first, so a `#define` there overrides any
+of it without showing up in `git status`.
 
-Three settings are worth a look before you trust the numbers on the case:
+Two settings are worth a look before you trust the numbers on the case:
 
 - **`BATTERY_DIVIDER`** — assumed 2.0. If the percentage looks wrong, measure the
   cell and scale it.
 - **`CHARGE_ACTIVE_LEVEL`** — GPIO20 is the charge-detect line; the polarity here
   is a guess, so flip it if the bolt icon is inverted on your unit.
-- **`IWLS_TLS_MODE`** — see below.
 
-### TLS
-
-The API's certificate is verified against the **Mozilla root store that ESP-IDF
-already ships**: `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL` is enabled in
-the Arduino framework's prebuilt mbedTLS, so roughly 200 roots are sitting in
-`libmbedtls.a` waiting to be referenced. Pointing `setCACertBundle()` at
-`_binary_x509_crt_bundle_start` links them in — about 64 kB of flash, which the
-build confirms (987,032 → 1,051,586 bytes).
-
-That is the default because it keeps working when the API rotates issuers, which
-matters here: `.gc.ca` sites have been migrating off Entrust since the 2024
-distrust decision, and a clock that fails closed on a root change is a clock
-that quietly stops.
-
-`IWLS_TLS_MODE` can also be set to `IWLS_TLS_PINNED` to trust exactly one root
-(`sh tools/fetch_ca.sh` prints a paste-ready PEM literal) — tighter, at the cost
-of reflashing whenever that root retires — or `IWLS_TLS_NONE` to skip
-verification entirely while debugging.
-
-A rejected certificate surfaces properly rather than as a generic timeout: the
-mbedTLS reason is logged over serial and the screen says
-`COULD NOT VERIFY THE TIDE SERVICE CERTIFICATE`.
+TLS is not one of them. The API's certificate is verified against the Mozilla
+root store that ESP-IDF already ships: `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL`
+is enabled in the Arduino framework's prebuilt mbedTLS, so roughly 200 roots sit
+in `libmbedtls.a` waiting to be referenced. Pointing `setCACertBundle()` at
+`_binary_x509_crt_bundle_start` links them in for about 64 kB of flash, and it
+keeps working when the API rotates issuers. If a certificate is rejected the
+mbedTLS reason is logged over serial, since at the `HTTPClient` level it would
+otherwise look like an ordinary connection failure.
 
 ## Repository layout
 
@@ -175,7 +160,7 @@ lib/tideui/          shared: canvas, fonts, tide model, IWLS parser, screen layo
 src/device/          firmware: panel driver, HTTPS client, power, deep sleep
 src/host/            simulator: same renderer, PNG output
 test/                native tests and captured API fixtures
-tools/               font generation, fixture capture, screenshot batch, CA helper
+tools/               font generation, fixture capture, screenshot batch
 ```
 
 The split matters: `lib/tideui` has no Arduino dependency, which is what lets
