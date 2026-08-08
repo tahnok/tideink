@@ -1,0 +1,4 @@
+.pio/
+src/device/secrets.h
+render.png
+.vscode/
