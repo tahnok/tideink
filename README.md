@@ -141,12 +141,30 @@ Three settings are worth a look before you trust the numbers on the case:
   cell and scale it.
 - **`CHARGE_ACTIVE_LEVEL`** — GPIO20 is the charge-detect line; the polarity here
   is a guess, so flip it if the bolt icon is inverted on your unit.
-- **`IWLS_ROOT_CA`** — empty by default, which means the download is encrypted but
-  the server certificate is not verified. That is a deliberate trade-off for a
-  device that only reads public tide predictions and has no credentials to
-  leak. Run `sh tools/fetch_ca.sh` to get a PEM literal to paste in if you would
-  rather pin it, and be aware that you will then have to reflash whenever the
-  API rotates roots.
+- **`IWLS_TLS_MODE`** — see below.
+
+### TLS
+
+The API's certificate is verified against the **Mozilla root store that ESP-IDF
+already ships**: `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL` is enabled in
+the Arduino framework's prebuilt mbedTLS, so roughly 200 roots are sitting in
+`libmbedtls.a` waiting to be referenced. Pointing `setCACertBundle()` at
+`_binary_x509_crt_bundle_start` links them in — about 64 kB of flash, which the
+build confirms (987,032 → 1,051,586 bytes).
+
+That is the default because it keeps working when the API rotates issuers, which
+matters here: `.gc.ca` sites have been migrating off Entrust since the 2024
+distrust decision, and a clock that fails closed on a root change is a clock
+that quietly stops.
+
+`IWLS_TLS_MODE` can also be set to `IWLS_TLS_PINNED` to trust exactly one root
+(`sh tools/fetch_ca.sh` prints a paste-ready PEM literal) — tighter, at the cost
+of reflashing whenever that root retires — or `IWLS_TLS_NONE` to skip
+verification entirely while debugging.
+
+A rejected certificate surfaces properly rather than as a generic timeout: the
+mbedTLS reason is logged over serial and the screen says
+`COULD NOT VERIFY THE TIDE SERVICE CERTIFICATE`.
 
 ## Repository layout
 
