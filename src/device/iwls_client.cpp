@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_sntp.h>
 #include <time.h>
 
 #include "config.h"
@@ -21,6 +22,14 @@ extern "C" const uint8_t kRootCaBundle[] asm("_binary_x509_crt_bundle_start");
 // The parsed download lands here first so a half-finished refresh cannot
 // corrupt the cached predictions. Static rather than stack: it is ~1.2 kB.
 TideData g_incoming;
+
+// Anything before this is a clock that has never been set.
+const int64_t kPlausibleEpoch = 1700000000;
+
+// Set from the SNTP callback when a response actually lands.
+volatile bool g_clockSynced = false;
+
+void onTimeSync(struct timeval*) { g_clockSynced = true; }
 
 void formatUtc(int64_t epoch, char* out, size_t n) {
     const time_t t = (time_t)epoch;
@@ -53,17 +62,37 @@ void stopWifi() {
 }
 
 bool syncClock() {
-    // The RTC keeps running through deep sleep, so this only really matters on
-    // the first boot and after a power cut.
+    // The RTC runs off the C3's internal RC oscillator (no 32.768 kHz crystal on
+    // this board), which drifts by minutes a day and is temperature-sensitive,
+    // so the clock has to be pulled back to NTP on every refresh -- not just on
+    // the first boot.
+    //
+    // configTzTime() only *starts* the SNTP client; it does not block. Waiting
+    // on "is the clock plausible" would return instantly on every boot after the
+    // first and leave the correction to whether a packet happened to arrive
+    // before the radio went down, so wait on the sync notification itself.
+    g_clockSynced = false;
+    sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
+    sntp_set_time_sync_notification_cb(onTimeSync);
     configTzTime(LOCAL_TZ, NTP_SERVER_1, NTP_SERVER_2);
+
+    const int64_t before = (int64_t)time(nullptr);
     const uint32_t deadline = millis() + NTP_TIMEOUT_MS;
-    while (time(nullptr) < 1700000000 && millis() < deadline) {
-        delay(200);
+    while (!g_clockSynced && millis() < deadline) {
+        delay(50);
     }
-    if (time(nullptr) < 1700000000) {
-        Serial.println("[net] NTP sync failed");
-        return false;
+
+    if (!g_clockSynced) {
+        // An already-set clock is still usable, just drifting: carry on with the
+        // download rather than throwing the whole refresh away over a slow NTP
+        // server. Only a clock that was never set is fatal.
+        const bool set = (int64_t)time(nullptr) > kPlausibleEpoch;
+        Serial.printf("[net] NTP sync failed (clock %s)\n", set ? "set, drifting" : "unset");
+        return set;
     }
+
+    Serial.printf("[net] clock synced, drift was %+lld s\n",
+                  (long long)((int64_t)time(nullptr) - before));
     return true;
 }
 

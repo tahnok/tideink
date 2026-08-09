@@ -50,6 +50,10 @@
 // Extra delay after a tide so the screen shows the *next* event, not the one
 // that just happened.
 #define WAKE_AFTER_TIDE_SECONDS 90
+// Floor for a wake that is aimed at a tide rather than at the schedule. It only
+// has to be long enough that sleeping is worth the boot, since MIN_SLEEP_MINUTES
+// would otherwise overshoot the very event the wake exists to catch.
+#define MIN_TIDE_SLEEP_SECONDS 60
 
 #define WIFI_TIMEOUT_MS 25000
 #define NTP_TIMEOUT_MS 15000

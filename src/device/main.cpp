@@ -42,8 +42,14 @@ bool refreshDue(int64_t now) {
 
 int64_t secondsUntilNextWake(int64_t now) {
     int64_t target = now + (int64_t)MAX_SLEEP_MINUTES * 60;
+    // MIN_SLEEP_MINUTES keeps the panel from thrashing, but it must not apply to
+    // a wake aimed just after a tide: clamping a four-minute sleep up to fifteen
+    // leaves an event that already happened sitting on the cards until then.
+    int64_t floorSeconds = (int64_t)MIN_SLEEP_MINUTES * 60;
 
-    if (g_cache.valid) {
+    // Same guard as cacheUsable()/refreshDue(): .valid alone is unvalidated RTC
+    // memory until the magic says the struct is ours.
+    if (g_cacheMagic == kCacheMagic && g_cache.valid) {
         const int64_t due = g_cache.fetchedAt + (int64_t)DATA_REFRESH_HOURS * 3600;
         if (due < target) target = due;
         // Wake just after the next high or low so the two headline cards always
@@ -51,11 +57,12 @@ int64_t secondsUntilNextWake(int64_t now) {
         const TideExtreme* next = tideNextAny(g_cache, now);
         if (next && next->time + WAKE_AFTER_TIDE_SECONDS < target) {
             target = next->time + WAKE_AFTER_TIDE_SECONDS;
+            floorSeconds = MIN_TIDE_SLEEP_SECONDS;
         }
     }
 
     int64_t seconds = target - now;
-    if (seconds < (int64_t)MIN_SLEEP_MINUTES * 60) seconds = (int64_t)MIN_SLEEP_MINUTES * 60;
+    if (seconds < floorSeconds) seconds = floorSeconds;
     if (seconds > (int64_t)MAX_SLEEP_MINUTES * 60) seconds = (int64_t)MAX_SLEEP_MINUTES * 60;
     return seconds;
 }
@@ -115,7 +122,10 @@ void setup() {
     }
 
     panelShow(canvas);
-    deepSleepFor(secondsUntilNextWake(now));
+
+    // A full 800x480 refresh takes seconds, so re-read the clock rather than
+    // scheduling from the timestamp the screen was drawn with.
+    deepSleepFor(secondsUntilNextWake(clockSet ? (int64_t)time(nullptr) : now));
 }
 
 void loop() {
