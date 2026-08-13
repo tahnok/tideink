@@ -47,18 +47,6 @@ void test_parse_iso8601() {
     TEST_ASSERT_EQUAL_INT64(-1, tiParseIso8601("not a date"));
 }
 
-void test_countdown_formatting() {
-    char buf[32];
-    tiFormatCountdown(0, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_STRING("now", buf);
-    tiFormatCountdown(40 * 60, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_STRING("in 40 min", buf);
-    tiFormatCountdown(4 * 3600 + 12 * 60, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_STRING("in 4h 12m", buf);
-    tiFormatCountdown(5 * 3600, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_STRING("in 5h", buf);
-}
-
 void test_fixture_parses() {
     const TideData data = load();
     TEST_ASSERT_GREATER_THAN(4, data.extremeCount);
@@ -120,15 +108,6 @@ void test_height_interpolation() {
     TEST_ASSERT_FALSE(tideHeightAt(data, end + 1, mm));
 }
 
-void test_rising_matches_extremes() {
-    const TideData data = load();
-    for (uint8_t i = 0; i + 1 < data.extremeCount; i++) {
-        const int64_t midway = (data.extremes[i].time + data.extremes[i + 1].time) / 2;
-        TEST_ASSERT_EQUAL_MESSAGE(data.extremes[i + 1].high, tideIsRising(data, midway),
-                                  "water rises towards a high and falls towards a low");
-    }
-}
-
 void test_curve_range_window() {
     const TideData data = load();
     int16_t lo = 0, hi = 0;
@@ -150,12 +129,10 @@ int main(int, char**) {
     tiSetTimezone("AST4ADT,M3.2.0,M11.1.0");
     UNITY_BEGIN();
     RUN_TEST(test_parse_iso8601);
-    RUN_TEST(test_countdown_formatting);
     RUN_TEST(test_fixture_parses);
     RUN_TEST(test_extremes_alternate);
     RUN_TEST(test_next_high_and_low);
     RUN_TEST(test_height_interpolation);
-    RUN_TEST(test_rising_matches_extremes);
     RUN_TEST(test_curve_range_window);
     RUN_TEST(test_rejects_garbage);
     return UNITY_END();

@@ -56,14 +56,6 @@ const TideExtreme* tideNextAny(const TideData& data, int64_t now) {
     return nullptr;
 }
 
-const TideExtreme* tidePreviousAny(const TideData& data, int64_t now) {
-    const TideExtreme* best = nullptr;
-    for (uint8_t i = 0; i < data.extremeCount; i++) {
-        if (data.extremes[i].time <= now) best = &data.extremes[i];
-    }
-    return best;
-}
-
 bool tideHeightAt(const TideData& data, int64_t t, int16_t& outMm) {
     const TideCurve& c = data.curve;
     if (c.count == 0 || c.stepSec == 0) return false;
@@ -99,12 +91,4 @@ bool tideCurveRange(const TideData& data, int64_t from, int64_t to, int16_t& min
         }
     }
     return any;
-}
-
-bool tideIsRising(const TideData& data, int64_t t) {
-    const TideExtreme* next = tideNextAny(data, t);
-    if (next) return next->high;
-    const TideExtreme* prev = tidePreviousAny(data, t);
-    if (prev) return !prev->high;
-    return false;
 }

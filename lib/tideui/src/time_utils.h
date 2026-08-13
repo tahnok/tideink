@@ -19,13 +19,9 @@ int64_t tiParseIso8601(const char* s);
 void tiFormatClock(int64_t epoch, bool hour24, char* out, size_t n);     // "6:41 pm" / "18:41"
 void tiFormatClockParts(int64_t epoch, bool hour24, char* time, size_t timeN, char* suffix,
                         size_t suffixN);                                 // "6:41" + "PM"
-void tiFormatDayName(int64_t epoch, char* out, size_t n);                // "Saturday"
 void tiFormatShortDay(int64_t epoch, char* out, size_t n);               // "Sat"
-void tiFormatLongDate(int64_t epoch, char* out, size_t n);               // "Saturday 8 August"
 void tiFormatDateTime(int64_t epoch, bool hour24, char* out, size_t n);  // "8 Aug 06:12"
 
-// "in 4h 12m", "in 34 min", "now"
-void tiFormatCountdown(int64_t seconds, char* out, size_t n);
 // "4h ago", "12 min ago"
 void tiFormatAge(int64_t seconds, char* out, size_t n);
 

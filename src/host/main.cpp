@@ -27,14 +27,11 @@ struct Options {
     std::string wlp = "test/fixtures/charlottetown_wlp.json";
     std::string out = "render.png";
     std::string station = "CHARLOTTETOWN, PE";
-    std::string note;
     std::string banner;
     std::string message;  // when set, render the fallback screen instead
     std::string tz = "AST4ADT,M3.2.0,M11.1.0";
     int64_t now = -1;         // -1 = middle of the loaded curve
     int64_t fetchedAgo = 3600;
-    int battery = 76;
-    bool charging = false;
     bool hour24 = false;
 };
 
@@ -57,15 +54,12 @@ void usage() {
         "  --hilo FILE        wlp-hilo fixture (high/low predictions)\n"
         "  --wlp FILE         wlp fixture (water level series)\n"
         "  --out FILE         output PNG (default render.png)\n"
-        "  --station NAME     station name shown in the header\n"
-        "  --note TEXT        small subtitle under the station name\n"
+        "  --station NAME     station name recorded in the parsed data\n"
         "  --banner TEXT      warning strip above the cards\n"
         "  --message T|A|B    render the fallback screen with these three lines\n"
         "  --now ISO8601      simulated clock, e.g. 2026-08-08T15:00:00Z\n"
         "  --tz TZSPEC        POSIX TZ string (default Atlantic)\n"
         "  --fetched-ago SEC  age of the cached download (default 3600)\n"
-        "  --battery PCT      0-100, or -1 for unknown\n"
-        "  --charging         draw the charging bolt\n"
         "  --24h              use a 24-hour clock\n");
 }
 
@@ -84,8 +78,6 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.out = argv[++i];
         } else if (a == "--station" && hasNext) {
             o.station = argv[++i];
-        } else if (a == "--note" && hasNext) {
-            o.note = argv[++i];
         } else if (a == "--banner" && hasNext) {
             o.banner = argv[++i];
         } else if (a == "--message" && hasNext) {
@@ -96,10 +88,6 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.tz = argv[++i];
         } else if (a == "--fetched-ago" && hasNext) {
             o.fetchedAgo = atoll(argv[++i]);
-        } else if (a == "--battery" && hasNext) {
-            o.battery = atoi(argv[++i]);
-        } else if (a == "--charging") {
-            o.charging = true;
         } else if (a == "--24h") {
             o.hour24 = true;
         } else {
@@ -163,10 +151,7 @@ int main(int argc, char** argv) {
 
         RenderStatus st;
         st.now = o.now;
-        st.batteryPercent = (int16_t)o.battery;
-        st.charging = o.charging;
         st.hour24 = o.hour24;
-        st.stationNote = o.note.empty() ? nullptr : o.note.c_str();
         st.banner = o.banner.empty() ? nullptr : o.banner.c_str();
 
         renderTideScreen(canvas, data, st);

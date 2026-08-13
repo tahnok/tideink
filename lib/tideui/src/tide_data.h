@@ -51,8 +51,6 @@ void tideDataClassifyExtremes(TideData& data);
 const TideExtreme* tideNextExtreme(const TideData& data, int64_t now, bool high);
 // Next extreme of either type, or nullptr.
 const TideExtreme* tideNextAny(const TideData& data, int64_t now);
-// Most recent extreme at or before `now`, or nullptr.
-const TideExtreme* tidePreviousAny(const TideData& data, int64_t now);
 
 // Interpolated water level at `t`, in millimetres. Returns false when `t` falls
 // outside the stored curve.
@@ -61,6 +59,3 @@ bool tideHeightAt(const TideData& data, int64_t t, int16_t& outMm);
 // Min/max of the curve over [from, to]. Returns false when the window is empty.
 bool tideCurveRange(const TideData& data, int64_t from, int64_t to, int16_t& minMm,
                     int16_t& maxMm);
-
-// True when the water is rising at `t` (derived from the surrounding extremes).
-bool tideIsRising(const TideData& data, int64_t t);

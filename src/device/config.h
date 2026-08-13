@@ -16,9 +16,6 @@
 #ifndef STATION_DISPLAY_NAME
 #define STATION_DISPLAY_NAME "CHARLOTTETOWN, PE"
 #endif
-#ifndef STATION_NOTE
-#define STATION_NOTE "CHS station 01700  46.23N 63.12W"
-#endif
 
 // POSIX TZ string. Atlantic time (AST/ADT) as observed on Prince Edward Island.
 #ifndef LOCAL_TZ

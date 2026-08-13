@@ -9,14 +9,19 @@
 namespace {
 
 const int16_t kMargin = 16;
-const int16_t kHeaderH = 56;
-const int16_t kCardY = 70;
-const int16_t kCardH = 174;
-const int16_t kCardGap = 16;
-const int16_t kCardTitleH = 30;
+const int16_t kHeaderH = 56;  // only the message screen still draws a header
+const int16_t kCardY = 16;
+const int16_t kCardH = 96;
+// Wide enough that the right-aligned height on the left card clears the rule
+// between the two, while both cards still line up with the page margins.
+const int16_t kCardGap = 24;
 
-const int16_t kPlotY = 270;
-const int16_t kPlotH = 148;
+const int16_t kPlotY = 160;
+const int16_t kPlotH = 258;
+
+// Warning strip above the cards. Everything below it shifts down by this much
+// and the plot gives up the height, so the cards keep their full size.
+const int16_t kBannerH = 26;
 const int16_t kPlotLeft = 62;  // room for the height axis labels
 const int16_t kPlotRight = kScreenWidth - kMargin;
 const int16_t kFooterRuleY = 452;
@@ -46,108 +51,40 @@ int16_t niceStepMm(int32_t rangeMm) {
     return kSteps[sizeof(kSteps) / sizeof(kSteps[0]) - 1];
 }
 
-void drawBattery(Canvas& c, int16_t x, int16_t y, int16_t percent, bool charging, TiInk ink) {
-    const int16_t w = 30, h = 15;
-    c.drawRect(x, y, w, h, ink);
-    c.fillRect(x + w, y + 4, 3, h - 8, ink);
-    if (percent >= 0) {
-        const int16_t fill = (int16_t)((int32_t)(w - 6) * percent / 100);
-        if (fill > 0) c.fillRect(x + 3, y + 3, fill, h - 6, ink);
-    }
-    if (charging) {
-        // A small lightning bolt over the cell.
-        c.line(x + w / 2 + 2, y + 2, x + w / 2 - 3, y + h / 2, ink == kBlack ? kWhite : kBlack);
-        c.line(x + w / 2 - 3, y + h / 2, x + w / 2 + 3, y + h / 2, ink == kBlack ? kWhite : kBlack);
-        c.line(x + w / 2 + 3, y + h / 2, x + w / 2 - 2, y + h - 3, ink == kBlack ? kWhite : kBlack);
-    }
-}
-
-void drawHeader(Canvas& c, const TideData& data, const RenderStatus& st) {
-    c.fillRect(0, 0, kScreenWidth, kHeaderH, kBlack);
-
-    const char* name = data.stationName[0] ? data.stationName : "TIDE CLOCK";
-    c.drawTextTracked(kMargin + 6, 30, name, FontH1, 1, kWhite);
-    if (st.stationNote) {
-        c.drawTextTracked(kMargin + 8, 47, st.stationNote, FontTiny, 1, kWhite);
-    }
-
-    int16_t right = kScreenWidth - kMargin - 6;
-    if (st.batteryPercent >= 0 || st.charging) {
-        drawBattery(c, right - 33, 20, st.batteryPercent, st.charging, kWhite);
-        right -= 44;
-        if (st.batteryPercent >= 0) {
-            char pct[8];
-            snprintf(pct, sizeof(pct), "%d%%", st.batteryPercent);
-            c.drawTextAligned(right, 33, pct, FontTiny, kRight, kWhite);
-            right -= Canvas::textWidth(pct, FontTiny) + 16;
-        }
-    }
-
-    // "Saturday 8 August * 6:00 am", with a drawn separator dot because the
-    // generated fonts only cover ASCII.
-    char clock[16];
-    tiFormatClock(st.now, st.hour24, clock, sizeof(clock));
-    c.drawTextAligned(right, 30, clock, FontBody, kRight, kWhite);
-    right -= Canvas::textWidth(clock, FontBody) + 10;
-    c.fillCircle(right - 4, 24, 2, kWhite);
-    right -= 14;
-
-    char date[48];
-    tiFormatLongDate(st.now, date, sizeof(date));
-    c.drawTextAligned(right, 30, date, FontBody, kRight, kWhite);
-}
-
-// One of the two "next tide" cards.
+// One of the two "next tide" panels. There is no box around them: a rule
+// between the pair and one underneath separate them well enough, and the height
+// that a border and a title bar would have cost goes to the graph instead. The
+// high/low word is set at body size rather than in small caps because it is the
+// one thing on the screen you read from across the room.
 void drawTideCard(Canvas& c, int16_t x, int16_t y, int16_t w, int16_t h, bool high,
                   const TideExtreme* ev, const RenderStatus& st) {
-    c.drawRectThick(x, y, w, h, 2, kBlack);
-    c.fillRect(x, y, w, kCardTitleH, kBlack);
-
-    const int16_t arrowX = x + 24;
-    const int16_t titleBase = y + 21;
+    const int16_t arrowX = x + 10;
+    const int16_t titleBase = y + 26;
     if (high) {
-        c.fillTriangleUp(arrowX, titleBase - 2, 8, 15, kWhite);
+        c.fillTriangleUp(arrowX, titleBase, 10, 20, kBlack);
     } else {
-        c.fillTriangleDown(arrowX, titleBase - 16, 8, 15, kWhite);
+        c.fillTriangleDown(arrowX, titleBase - 20, 10, 20, kBlack);
     }
-    c.drawTextTracked(arrowX + 20, titleBase, high ? "NEXT HIGH TIDE" : "NEXT LOW TIDE", FontLabel,
-                      2, kWhite);
+    c.drawTextTracked(arrowX + 24, titleBase, high ? "HIGH TIDE" : "LOW TIDE", FontH2, 2, kBlack);
 
     if (!ev) {
-        c.drawTextAligned(x + w / 2, y + kCardTitleH + 70, "no prediction", FontH1, kCenter);
+        c.drawTextAligned(x + w / 2, y + 76, "no prediction", FontH1, kCenter);
         return;
-    }
-
-    char clock[16], suffix[8];
-    tiFormatClockParts(ev->time, st.hour24, clock, sizeof(clock), suffix, sizeof(suffix));
-
-    // Sit the big numerals just above the middle of the card body so the card
-    // still reads well when a banner has shortened it.
-    const int16_t timeBase = y + kCardTitleH + (h - kCardTitleH) * 54 / 100;
-    int16_t cursor = x + 22;
-    cursor += c.drawText(cursor, timeBase, clock, FontBig);
-    if (suffix[0]) {
-        c.drawText(cursor + 8, timeBase - 4, suffix, FontH2);
     }
 
     char height[16];
     formatMetres(ev->heightMm, height, sizeof(height));
-    c.drawTextAligned(x + w - 22, timeBase, height, FontH1, kRight);
+    c.drawTextAligned(x + w, titleBase, height, FontH2, kRight);
 
-    char countdown[24];
-    tiFormatCountdown(ev->time - st.now, countdown, sizeof(countdown));
-    const int16_t subBase = y + h - 22;
-    c.drawText(x + 24, subBase, countdown, FontH2);
+    char clock[16], suffix[8];
+    tiFormatClockParts(ev->time, st.hour24, clock, sizeof(clock), suffix, sizeof(suffix));
 
-    char day[24];
-    if (tiStartOfLocalDay(ev->time) != tiStartOfLocalDay(st.now)) {
-        char shortDay[8];
-        tiFormatShortDay(ev->time, shortDay, sizeof(shortDay));
-        snprintf(day, sizeof(day), "%s", shortDay);
-    } else {
-        snprintf(day, sizeof(day), "today");
+    const int16_t base = y + h - 4;
+    int16_t cursor = x + 6;
+    cursor += c.drawText(cursor, base, clock, FontBig);
+    if (suffix[0]) {
+        c.drawText(cursor + 8, base - 4, suffix, FontH2);
     }
-    c.drawTextAligned(x + w - 24, subBase, day, FontBody, kRight);
 }
 
 struct PlotMap {
@@ -155,6 +92,8 @@ struct PlotMap {
     int64_t to;
     int16_t minMm;
     int16_t maxMm;
+    int16_t top;     // a banner pushes the plot down and shortens it
+    int16_t height;
 
     int16_t xFor(int64_t t) const {
         if (to <= from) return kPlotLeft;
@@ -172,22 +111,25 @@ struct PlotMap {
 
     int16_t yFor(int16_t mm) const {
         const int32_t range = maxMm - minMm;
-        if (range <= 0) return kPlotY + kPlotH / 2;
-        int32_t py = (int32_t)(kPlotH - 1) * (mm - minMm) / range;
+        if (range <= 0) return top + height / 2;
+        int32_t py = (int32_t)(height - 1) * (mm - minMm) / range;
         if (py < 0) py = 0;
-        if (py > kPlotH - 1) py = kPlotH - 1;
-        return kPlotY + kPlotH - 1 - (int16_t)py;
+        if (py > height - 1) py = height - 1;
+        return top + height - 1 - (int16_t)py;
     }
 };
 
-void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
+void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st, int16_t plotTop,
+               int16_t plotH) {
     PlotMap map;
     map.from = st.now - (int64_t)kGraphHoursBefore * 3600;
     map.to = st.now + (int64_t)kGraphHoursAfter * 3600;
+    map.top = plotTop;
+    map.height = plotH;
 
     int16_t lo = 0, hi = 0;
     if (!tideCurveRange(data, map.from, map.to, lo, hi)) {
-        c.drawTextAligned(kScreenWidth / 2, kPlotY + kPlotH / 2, "no water level predictions",
+        c.drawTextAligned(kScreenWidth / 2, plotTop + plotH / 2, "no water level predictions",
                           FontBody, kCenter);
         return;
     }
@@ -198,8 +140,8 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
     map.maxMm = (int16_t)(ceilDiv(hi + stepMm / 3, stepMm) * stepMm);
 
     // Section heading.
-    c.drawTextTracked(kMargin + 6, kPlotY - 14, "WATER LEVEL, NEXT 48 HOURS", FontLabel, 2);
-    c.drawTextAligned(kPlotRight, kPlotY - 14, "metres above chart datum", FontTiny, kRight);
+    c.drawTextTracked(kMargin + 6, plotTop - 14, "WATER LEVEL, NEXT 48 HOURS", FontLabel, 2);
+    c.drawTextAligned(kPlotRight, plotTop - 14, "metres above chart datum", FontTiny, kRight);
 
     // Horizontal gridlines and height labels.
     for (int32_t mm = map.minMm; mm <= map.maxMm; mm += stepMm) {
@@ -219,7 +161,7 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
             continue;
         }
         const int16_t y = map.yFor(mm);
-        for (int16_t fy = y + 1; fy < kPlotY + kPlotH; fy++) {
+        for (int16_t fy = y + 1; fy < plotTop + plotH; fy++) {
             if ((x % 2) == 0 && (fy % 2) == 0) c.setPixel(x, fy, kBlack);
         }
         if (prevY >= 0 && (y > prevY + 1 || y < prevY - 1)) {
@@ -232,9 +174,9 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
     }
 
     // Day boundaries and 6-hourly ticks along the bottom.
-    const int16_t axisY = kPlotY + kPlotH;
+    const int16_t axisY = plotTop + plotH;
     c.hLine(kPlotLeft, axisY, kPlotRight - kPlotLeft, kBlack);
-    c.vLine(kPlotLeft, kPlotY, kPlotH + 1, kBlack);
+    c.vLine(kPlotLeft, plotTop, plotH + 1, kBlack);
 
     // Walk local hours rather than UTC ones: the ticks have to land on local
     // 00/06/12/18 whatever the current UTC offset is, and stay right across a
@@ -246,7 +188,7 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
         const int16_t x = map.xFor(t);
         const bool midnight = hour == 0;
         c.vLine(x, axisY + 1, midnight ? 8 : 4, kBlack);
-        if (midnight) c.dashedVLine(x, kPlotY, kPlotH, 2, 6, kBlack);
+        if (midnight) c.dashedVLine(x, plotTop, plotH, 2, 6, kBlack);
         char label[16];
         if (midnight) {
             char day[8];
@@ -291,47 +233,6 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st) {
         c.fillRect(lx - w / 2 - 3, ly - 12, w + 6, 16, kWhite);
         c.drawTextAligned(lx, ly, label, FontTiny, kCenter);
     }
-
-    // "Now" marker, drawn last so it stays readable over the fill.
-    const int16_t nowX = map.xFor(st.now);
-    c.fillRect(nowX - 1, kPlotY, 3, kPlotH, kWhite);
-    c.dashedVLine(nowX, kPlotY, kPlotH, 4, 3, kBlack);
-    int16_t nowMm = 0;
-    const bool haveNow = tideHeightAt(data, st.now, nowMm);
-    if (haveNow) {
-        const int16_t y = map.yFor(nowMm);
-        c.fillCircle(nowX, y, 6, kWhite);
-        c.fillCircle(nowX, y, 5, kBlack);
-    }
-
-    // A pill beside the marker reads "NOW 0.44 m" with a rising/falling arrow.
-    // It sits next to the dot rather than at the top of the line so it never
-    // lands on a high/low label.
-    char nowLabel[24] = "NOW";
-    if (haveNow) {
-        char metres[12];
-        formatMetresBare(nowMm, metres, sizeof(metres));
-        snprintf(nowLabel, sizeof(nowLabel), "NOW  %s m", metres);
-    }
-    const bool rising = tideIsRising(data, st.now);
-    const int16_t pillW = Canvas::textWidth(nowLabel, FontLabel, 2) + 34;
-    const int16_t pillH = 22;
-    int16_t px = nowX + 12;
-    if (px + pillW > kPlotRight - 2) px = nowX - 12 - pillW;
-    // Sit the pill on the far side of the marker from the high/low label, which
-    // is drawn above peaks and below troughs.
-    const int16_t dotY = haveNow ? map.yFor(nowMm) : kPlotY + kPlotH / 2;
-    int16_t py = dotY < kPlotY + kPlotH / 2 ? dotY + 10 : dotY - 10 - pillH;
-    if (py < kPlotY + 1) py = kPlotY + 1;
-    if (py + pillH > kPlotY + kPlotH - 1) py = kPlotY + kPlotH - 1 - pillH;
-    c.fillRect(px, py, pillW, pillH, kBlack);
-    c.drawTextTracked(px + 10, py + 15, nowLabel, FontLabel, 2, kWhite);
-    const int16_t arrowX = px + pillW - 12;
-    if (rising) {
-        c.fillTriangleUp(arrowX, py + 16, 5, 10, kWhite);
-    } else {
-        c.fillTriangleDown(arrowX, py + 6, 5, 10, kWhite);
-    }
 }
 
 void drawFooter(Canvas& c, const TideData& data, const RenderStatus& st) {
@@ -354,12 +255,8 @@ void drawFooter(Canvas& c, const TideData& data, const RenderStatus& st) {
     c.drawTextAligned(kScreenWidth - kMargin - 6, base, right, FontTiny, kRight);
 }
 
-// Warning strip between the header and the cards. The cards give up the same
-// amount of height, so nothing else on the screen has to move.
-const int16_t kBannerH = 26;
-
 void drawBanner(Canvas& c, const char* text) {
-    const int16_t y = kHeaderH + 4;
+    const int16_t y = kCardY;
     c.fillRectPattern(kMargin, y, kScreenWidth - 2 * kMargin, kBannerH - 4, kCheck50, kBlack);
     const int16_t w = Canvas::textWidth(text, FontLabel, 2);
     c.fillRect(kScreenWidth / 2 - w / 2 - 12, y, w + 24, kBannerH - 4, kWhite);
@@ -370,18 +267,21 @@ void drawBanner(Canvas& c, const char* text) {
 
 void renderTideScreen(Canvas& c, const TideData& data, const RenderStatus& st) {
     c.clear(kWhite);
-    drawHeader(c, data, st);
 
     if (st.banner) drawBanner(c, st.banner);
 
+    // A banner pushes the cards down at their full height; the plot, which has
+    // the most room to spare, gives up the difference.
+    const int16_t shift = st.banner ? kBannerH : 0;
     const int16_t cardW = (kScreenWidth - 2 * kMargin - kCardGap) / 2;
-    const int16_t cardY = kCardY + (st.banner ? kBannerH : 0);
-    const int16_t cardH = kCardH - (st.banner ? kBannerH : 0);
-    drawTideCard(c, kMargin, cardY, cardW, cardH, true, tideNextExtreme(data, st.now, true), st);
-    drawTideCard(c, kMargin + cardW + kCardGap, cardY, cardW, cardH, false,
+    const int16_t cardY = kCardY + shift;
+    drawTideCard(c, kMargin, cardY, cardW, kCardH, true, tideNextExtreme(data, st.now, true), st);
+    drawTideCard(c, kMargin + cardW + kCardGap, cardY, cardW, kCardH, false,
                  tideNextExtreme(data, st.now, false), st);
+    c.vLine(kScreenWidth / 2, cardY + 4, kCardH - 8, kBlack);
+    c.hLine(kMargin, cardY + kCardH + 14, kScreenWidth - 2 * kMargin, kBlack);
 
-    drawGraph(c, data, st);
+    drawGraph(c, data, st, kPlotY + shift, kPlotH - shift);
     drawFooter(c, data, st);
 }
 

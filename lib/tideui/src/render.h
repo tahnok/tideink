@@ -9,12 +9,9 @@ static const int16_t kScreenWidth = 800;
 static const int16_t kScreenHeight = 480;
 
 struct RenderStatus {
-    int64_t now;             // epoch seconds
-    int16_t batteryPercent;  // 0-100, or -1 when unknown
-    bool charging;
-    bool hour24;             // 24-hour clock instead of am/pm
-    const char* stationNote; // small subtitle under the station name, may be null
-    const char* banner;      // optional warning strip, e.g. "Wi-Fi unreachable"
+    int64_t now;         // epoch seconds
+    bool hour24;         // 24-hour clock instead of am/pm
+    const char* banner;  // optional warning strip, e.g. "Wi-Fi unreachable"
 };
 
 // Hours of prediction shown on the graph, relative to "now".

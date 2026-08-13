@@ -7,12 +7,7 @@
 
 namespace {
 
-const char* const kDayLong[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
-                               "Thursday", "Friday", "Saturday"};
 const char* const kDayShort[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-const char* const kMonthLong[] = {"January", "February", "March",     "April",   "May",
-                                  "June",    "July",     "August",    "September",
-                                  "October", "November", "December"};
 const char* const kMonthShort[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
@@ -86,15 +81,6 @@ void tiFormatClockParts(int64_t epoch, bool hour24, char* time, size_t timeN, ch
     }
 }
 
-void tiFormatDayName(int64_t epoch, char* out, size_t n) {
-    struct tm tm;
-    if (!localParts(epoch, tm)) {
-        snprintf(out, n, "---");
-        return;
-    }
-    snprintf(out, n, "%s", kDayLong[tm.tm_wday % 7]);
-}
-
 void tiFormatShortDay(int64_t epoch, char* out, size_t n) {
     struct tm tm;
     if (!localParts(epoch, tm)) {
@@ -102,15 +88,6 @@ void tiFormatShortDay(int64_t epoch, char* out, size_t n) {
         return;
     }
     snprintf(out, n, "%s", kDayShort[tm.tm_wday % 7]);
-}
-
-void tiFormatLongDate(int64_t epoch, char* out, size_t n) {
-    struct tm tm;
-    if (!localParts(epoch, tm)) {
-        snprintf(out, n, "--");
-        return;
-    }
-    snprintf(out, n, "%s %d %s", kDayLong[tm.tm_wday % 7], tm.tm_mday, kMonthLong[tm.tm_mon % 12]);
 }
 
 void tiFormatDateTime(int64_t epoch, bool hour24, char* out, size_t n) {
@@ -125,24 +102,6 @@ void tiFormatDateTime(int64_t epoch, bool hour24, char* out, size_t n) {
     } else {
         snprintf(out, n, "%d %s %d:%02d %s", tm.tm_mday, kMonthShort[tm.tm_mon % 12],
                  hour12(tm.tm_hour), tm.tm_min, tm.tm_hour < 12 ? "am" : "pm");
-    }
-}
-
-void tiFormatCountdown(int64_t seconds, char* out, size_t n) {
-    if (seconds < 0) seconds = 0;
-    const int64_t minutes = (seconds + 30) / 60;  // round to the nearest minute
-    if (minutes < 1) {
-        snprintf(out, n, "now");
-    } else if (minutes < 60) {
-        snprintf(out, n, "in %lld min", (long long)minutes);
-    } else {
-        const long long h = (long long)(minutes / 60);
-        const long long m = (long long)(minutes % 60);
-        if (m == 0) {
-            snprintf(out, n, "in %lldh", h);
-        } else {
-            snprintf(out, n, "in %lldh %lldm", h, m);
-        }
     }
 }
 

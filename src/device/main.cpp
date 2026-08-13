@@ -108,17 +108,16 @@ void setup() {
     } else {
         RenderStatus st;
         st.now = now;
-        st.batteryPercent = batteryPercent();
-        st.charging = batteryCharging();
         st.hour24 = CLOCK_24H;
-        st.stationNote = STATION_NOTE;
         st.banner = status == FetchStatus::kOk ? nullptr : fetchStatusMessage(status);
         renderTideScreen(canvas, g_cache, st);
 
+        // The screen no longer shows the battery, but the log still should:
+        // it is the only way to see the charge state of a sleeping clock.
         char clock[16];
         tiFormatClock(now, CLOCK_24H, clock, sizeof(clock));
-        Serial.printf("[draw] %s, battery %d%%%s\n", clock, st.batteryPercent,
-                      st.charging ? " (charging)" : "");
+        Serial.printf("[draw] %s, battery %d%%%s\n", clock, batteryPercent(),
+                      batteryCharging() ? " (charging)" : "");
     }
 
     panelShow(canvas);

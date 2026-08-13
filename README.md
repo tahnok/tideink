@@ -39,8 +39,8 @@ The default station is Charlottetown, CHS **01700**, IWLS id
 datum, the same reference the printed tide tables use.
 
 Point the clock somewhere else by defining `IWLS_STATION_ID`,
-`STATION_DISPLAY_NAME`, `STATION_NOTE` and `LOCAL_TZ` in
-`src/device/secrets.h`, which is gitignored and wins over the defaults in
+`STATION_DISPLAY_NAME` and `LOCAL_TZ` in `src/device/secrets.h`, which is
+gitignored and wins over the defaults in
 [`src/device/config.h`](src/device/config.h) — handy if you would rather not
 commit the tide station at the end of your road. The full station list is at
 <https://api-iwls.dfo-mpo.gc.ca/api/v1/stations>.
@@ -84,13 +84,13 @@ moment in the tide cycle without waiting for it:
 ```sh
 .pio/build/sim/program \
     --now 2026-08-08T22:30:00Z \
-    --battery 9 --banner "WI-FI UNREACHABLE - SHOWING CACHED PREDICTIONS" \
+    --banner "WI-FI UNREACHABLE - SHOWING CACHED PREDICTIONS" \
     --out /tmp/late-night.png
 ```
 
-`--help` lists the rest (`--24h`, `--charging`, `--tz`, `--fetched-ago`,
-`--message`, …). Fixtures under `test/fixtures/` are unmodified API responses;
-refresh or re-capture them with:
+`--help` lists the rest (`--24h`, `--tz`, `--fetched-ago`, `--message`, …).
+Fixtures under `test/fixtures/` are unmodified API responses; refresh or
+re-capture them with:
 
 ```sh
 python3 tools/fetch_fixtures.py --from 2026-08-08 --hours 72
@@ -99,7 +99,7 @@ python3 tools/fetch_fixtures.py --from 2026-08-08 --hours 72
 | | |
 |---|---|
 | ![rising](docs/screenshots/02-rising.png) | ![near high](docs/screenshots/03-near-high.png) |
-| ![24-hour clock](docs/screenshots/04-24h-clock.png) | ![stale cache](docs/screenshots/06-stale-cache.png) |
+| ![24-hour clock](docs/screenshots/04-24h-clock.png) | ![stale cache](docs/screenshots/05-stale-cache.png) |
 
 ## How it runs on a battery
 
@@ -137,10 +137,10 @@ of it without showing up in `git status`.
 
 Two settings are worth a look before you trust the numbers on the case:
 
-- **`BATTERY_DIVIDER`** — assumed 2.0. If the percentage looks wrong, measure the
-  cell and scale it.
+- **`BATTERY_DIVIDER`** — assumed 2.0. If the percentage in the `[draw]` log line
+  looks wrong, measure the cell and scale it.
 - **`CHARGE_ACTIVE_LEVEL`** — GPIO20 is the charge-detect line; the polarity here
-  is a guess, so flip it if the bolt icon is inverted on your unit.
+  is a guess, so flip it if the same log line reports charging backwards.
 
 TLS is not one of them. The API's certificate is verified against the Mozilla
 root store that ESP-IDF already ships: `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL`

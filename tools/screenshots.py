@@ -18,7 +18,6 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 OUT_DIR = os.path.join(ROOT, "docs", "screenshots")
 
 STATION = "CHARLOTTETOWN, PE"
-NOTE = "CHS station 01700  46.23N 63.12W"
 
 # name -> extra arguments
 SCENES = {
@@ -26,18 +25,15 @@ SCENES = {
     "02-rising": ["--now", "2026-08-08T19:30:00Z"],
     "03-near-high": ["--now", "2026-08-08T22:30:00Z"],
     "04-24h-clock": ["--now", "2026-08-08T12:00:00Z", "--24h"],
-    "05-charging": ["--now", "2026-08-08T12:00:00Z", "--battery", "34", "--charging"],
-    "06-stale-cache": [
+    "05-stale-cache": [
         "--now",
         "2026-08-09T05:00:00Z",
-        "--battery",
-        "9",
         "--fetched-ago",
         "97200",
         "--banner",
         "WI-FI UNREACHABLE - SHOWING CACHED PREDICTIONS",
     ],
-    "07-first-boot": [
+    "06-first-boot": [
         "--message",
         "Waiting for Wi-Fi|Connecting to the network and downloading|tide predictions from the CHS.",
     ],
@@ -60,7 +56,6 @@ def main() -> int:
             "--hilo", os.path.join(ROOT, "test", "fixtures", "charlottetown_hilo.json"),
             "--wlp", os.path.join(ROOT, "test", "fixtures", "charlottetown_wlp.json"),
             "--station", STATION,
-            "--note", NOTE,
             "--out", out,
         ] + extra
         result = subprocess.run(cmd, cwd=ROOT)
