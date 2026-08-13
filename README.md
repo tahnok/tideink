@@ -12,13 +12,24 @@ spends the rest of its life in deep sleep.
 
 | | |
 |---|---|
-| Board | Xteink X4 — ESP32-C3, 16 MB flash, USB serial/JTAG |
+| Board | Xteink X4 — ESP32-C3, 16 MB flash, no PSRAM, USB serial/JTAG |
 | Panel | 4.26" GDEQ0426T82, 800×480, SSD1677 controller, monochrome |
+| Buttons | 7 — power on its own GPIO, six more on two ADC resistor ladders |
+| Battery | single LiPo (650 mAh published) on a 2:1 divider; no fuel gauge |
+| Power | GPIO13 latches the battery MOSFET — hold it HIGH or it runs on USB only |
+| Timekeeping | the C3's internal RTC only — no RTC chip, no 32.768 kHz crystal |
 | Framework | Arduino via PlatformIO |
 
 No teardown or hardware modification is needed: the C3 exposes serial over JTAG
 through the USB port, so the firmware flashes over the same cable you charge it
 with.
+
+[`docs/hardware.md`](docs/hardware.md) documents the pin map, the button ladder
+levels, the battery divider and the clock sources, all measured on hardware with
+the probe firmware in `src/diag/` (`pio run -e diag -t upload`). Read it before
+trusting a published X4 pinout: the widely copied button levels are raw ADC
+counts mislabelled as millivolts, and one table lists the X3's I²C bus on pins
+that are the battery divider and charge detect here.
 
 ## Data source
 
@@ -153,12 +164,18 @@ time zone, refresh schedule, requested window and resolution, pin map and
 battery curve. `secrets.h` is included first, so a `#define` there overrides any
 of it without showing up in `git status`.
 
-Two settings are worth a look before you trust the numbers on the case:
+Both of the settings that used to be guesses have since been measured on
+hardware and corrected — `BATTERY_DIVIDER` really is 2.0, and
+`CHARGE_ACTIVE_LEVEL` is `HIGH`, not the `LOW` this originally shipped with.
+See [`docs/hardware.md`](docs/hardware.md) for the readings.
 
-- **`BATTERY_DIVIDER`** — assumed 2.0. If the percentage in the `[draw]` log line
-  looks wrong, measure the cell and scale it.
-- **`CHARGE_ACTIVE_LEVEL`** — GPIO20 is the charge-detect line; the polarity here
-  is a guess, so flip it if the same log line reports charging backwards.
+One finding from that document is worth repeating here, because without it none
+of the battery story above is true: **GPIO13 is a battery latch MOSFET, and it
+has to be held HIGH — through deep sleep — or the clock only runs on the cable.**
+Left floating, unplugging kills the board in about a second while the divider
+still reads a full 4.15 V, so it looks like anything but a power problem. The
+panel keeps its last image either way, so a dead clock and a working one are
+indistinguishable on the shelf.
 
 TLS is not one of them. The API's certificate is verified against the Mozilla
 root store that ESP-IDF already ships: `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL`

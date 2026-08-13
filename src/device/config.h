@@ -60,6 +60,9 @@
 
 // ------------------------------------------------------------------- pins ---
 // Xteink X4 (ESP32-C3). Display is a 4.26" 800x480 GDEQ0426T82 on an SSD1677.
+// Every pin below is confirmed on hardware; docs/hardware.md has the readings,
+// the six other buttons this firmware ignores, and what the board does not have
+// (no external RTC, no fuel gauge, no 32.768 kHz crystal).
 #define PIN_EPD_SCK 8
 #define PIN_EPD_MOSI 10
 #define PIN_EPD_CS 21
@@ -70,10 +73,23 @@
 // Battery sense: GPIO0 sits behind a divider on the cell.
 #define PIN_BATTERY_ADC 0
 #define BATTERY_DIVIDER 2.0f
-// USB charge detect. Flip the active level if your unit reads inverted.
+// USB charge detect. GPIO20 is driven HIGH with a cable attached and reads LOW
+// without one -- measured in both directions, see docs/hardware.md.
 #define PIN_CHARGE_DETECT 20
-#define CHARGE_ACTIVE_LEVEL LOW
+#define CHARGE_ACTIVE_LEVEL HIGH
 #define ENABLE_CHARGE_DETECT 1
+
+// Battery latch MOSFET. GPIO13 gates the cell's path to the system rail: held
+// HIGH the board runs off the battery, released (or driven LOW) it powers down
+// the moment USB goes away. It has to stay asserted through deep sleep, so it is
+// latched with gpio_hold_en() -- otherwise the pad floats as soon as the GPIO
+// matrix powers down and the clock dies mid-sleep.
+//
+// CrossPoint drives this pin LOW deliberately, to power the reader off on
+// battery when the user closes it. A tide clock wants the opposite.
+#define PIN_BATTERY_LATCH 13
+#define BATTERY_LATCH_ACTIVE_LEVEL HIGH
+#define ENABLE_BATTERY_LATCH 1
 
 // Front panel power button, used to force an immediate refresh.
 #define PIN_WAKE_BUTTON 3

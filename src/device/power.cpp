@@ -2,11 +2,29 @@
 
 #include <Arduino.h>
 #include <HWCDC.h>
+#include <driver/gpio.h>
 #include <esp_sleep.h>
 
 #include "config.h"
 
 namespace {
+
+#if ENABLE_BATTERY_LATCH
+// Assert the battery latch and keep it asserted across deep sleep.
+//
+// Order matters. While a pad is held, configuration writes are staged but do
+// not reach it, so the pin is driven to the right level *first* and the hold
+// released after -- releasing first would let the pad float for the microseconds
+// before it is reconfigured, and that is long enough to drop the rail the code
+// is running from.
+void latchBattery() {
+    pinMode(PIN_BATTERY_LATCH, OUTPUT);
+    digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
+    gpio_hold_dis((gpio_num_t)PIN_BATTERY_LATCH);
+    pinMode(PIN_BATTERY_LATCH, OUTPUT);
+    digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
+}
+#endif
 
 uint16_t readMillivoltsAveraged() {
     uint32_t total = 0;
@@ -21,6 +39,10 @@ uint16_t readMillivoltsAveraged() {
 }  // namespace
 
 void powerBegin() {
+#if ENABLE_BATTERY_LATCH
+    // First thing on every boot: without this the clock only runs on the cable.
+    latchBattery();
+#endif
     analogSetPinAttenuation(PIN_BATTERY_ADC, ADC_11db);
 #if ENABLE_CHARGE_DETECT
     pinMode(PIN_CHARGE_DETECT, INPUT);
@@ -92,6 +114,14 @@ void deepSleepFor(int64_t seconds) {
     Serial.flush();
 
     esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
+#if ENABLE_BATTERY_LATCH
+    // The GPIO matrix powers down in deep sleep, so the latch has to be pinned
+    // by the RTC hold or the board switches itself off as soon as it sleeps.
+    pinMode(PIN_BATTERY_LATCH, OUTPUT);
+    digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
+    gpio_hold_en((gpio_num_t)PIN_BATTERY_LATCH);
+    gpio_deep_sleep_hold_en();
+#endif
 #if ENABLE_BUTTON_WAKE
     // Re-assert the pull immediately before arming the wake source. powerBegin()
     // set it, but a radio session and a panel refresh have run since; a floating
