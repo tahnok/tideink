@@ -80,6 +80,12 @@
 #define WAKE_BUTTON_ACTIVE_LOW 1
 #define ENABLE_BUTTON_WAKE 1
 
+// Stay awake instead of deep sleeping while a USB host is attached, so the
+// USB Serial/JTAG port stays enumerated and `pio run -t upload` can reset the
+// chip into its bootloader on its own. Costs nothing on a cable; set to 0 if
+// you would rather the clock behave identically plugged in and unplugged.
+#define STAY_AWAKE_ON_USB 1
+
 // LiPo open-circuit voltage range used for the percentage readout.
 #define BATTERY_EMPTY_MV 3300
 #define BATTERY_FULL_MV 4150

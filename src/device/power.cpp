@@ -1,6 +1,7 @@
 #include "power.h"
 
 #include <Arduino.h>
+#include <HWCDC.h>
 #include <esp_sleep.h>
 
 #include "config.h"
@@ -50,6 +51,39 @@ bool batteryCharging() {
 
 bool wokeFromButton() {
     return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO;
+}
+
+bool usbAttached() {
+    // HWCDC watches for start-of-frame packets on a FreeRTOS tick hook and
+    // clears the flag after ~5 ms without one. It is initialised to true, so
+    // this is only meaningful once the scheduler has run for a few ticks --
+    // fine here, since the caller asks at the end of a wake cycle.
+    return HWCDC::isPlugged();
+}
+
+int64_t stayAwakeFor(int64_t seconds) {
+    if (seconds > (int64_t)MAX_SLEEP_MINUTES * 60) seconds = (int64_t)MAX_SLEEP_MINUTES * 60;
+    if (seconds < 0) seconds = 0;
+
+    Serial.printf("[power] USB attached, staying awake %lld s instead of sleeping\n",
+                  (long long)seconds);
+    Serial.flush();
+
+    // Unsigned arithmetic on the start offset, so a millis() rollover during
+    // the window still compares correctly.
+    const uint32_t start = millis();
+    const uint32_t windowMs = (uint32_t)seconds * 1000u;
+    for (;;) {
+        const uint32_t elapsed = millis() - start;
+        if (elapsed >= windowMs) return 0;
+        if (!usbAttached()) {
+            const int64_t left = (windowMs - elapsed + 999) / 1000;
+            Serial.printf("[power] USB gone, sleeping for the remaining %lld s\n",
+                          (long long)left);
+            return left > 0 ? left : 1;
+        }
+        delay(250);
+    }
 }
 
 void deepSleepFor(int64_t seconds) {

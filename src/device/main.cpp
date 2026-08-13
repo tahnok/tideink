@@ -124,7 +124,25 @@ void setup() {
 
     // A full 800x480 refresh takes seconds, so re-read the clock rather than
     // scheduling from the timestamp the screen was drawn with.
-    deepSleepFor(secondsUntilNextWake(clockSet ? (int64_t)time(nullptr) : now));
+    int64_t seconds = secondsUntilNextWake(clockSet ? (int64_t)time(nullptr) : now);
+
+#if STAY_AWAKE_ON_USB
+    // Deep sleep powers down the USB Serial/JTAG peripheral, so the port
+    // disappears from the host and esptool has nothing left to reset -- which
+    // is why flashing otherwise needs the BOOT+RESET dance. On a cable there is
+    // no battery to protect, so wait the schedule out awake instead and start
+    // the next cycle with a reset, which keeps the port up the whole time.
+    if (usbAttached()) {
+        seconds = stayAwakeFor(seconds);
+        if (seconds == 0) {
+            Serial.println("[power] restarting for the next cycle");
+            Serial.flush();
+            ESP.restart();
+        }
+    }
+#endif
+
+    deepSleepFor(seconds);
 }
 
 void loop() {

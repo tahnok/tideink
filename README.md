@@ -65,6 +65,22 @@ On first boot it connects to Wi-Fi, sets its clock from NTP, downloads three
 days of predictions, draws the screen, and sleeps. If Wi-Fi is not reachable it
 says so on screen instead of showing nothing.
 
+### Flashing without the button dance
+
+Deep sleep powers down the ESP32-C3's USB Serial/JTAG peripheral, so a sleeping
+clock has no serial port for `esptool` to find, let alone reset — hence the
+usual hold-BOOT-tap-RESET routine. `STAY_AWAKE_ON_USB` (default on) avoids it:
+whenever the clock finishes a wake cycle with a USB host attached, it waits the
+schedule out awake rather than sleeping, so the port stays enumerated and
+`pio run -e x4 -t upload` can reset the chip into its bootloader by itself.
+
+The clock still has to be *awake* to notice the cable. GPIO20 is the
+charge-detect line, and the C3 can only wake from deep sleep on GPIO 0–5, so
+plugging in cannot wake it on its own — **tap the front button once** after
+connecting. That is an ordinary button press, not the BOOT+RESET combination.
+From then on the port stays up until you unplug, and the clock resumes normal
+sleeping as soon as the cable comes out.
+
 ## Screenshot renders
 
 The UI is the part you iterate on, and reflashing to look at a layout tweak is
@@ -112,7 +128,9 @@ sleep:
    high, a next low, and a curve covering right now?
 3. If not, bring up Wi-Fi, sync NTP, download both series, drop the radio.
 4. Redraw the panel from the cache.
-5. Sleep until the next interesting moment.
+5. Sleep until the next interesting moment — or, on USB, stay awake until it
+   instead, so the port stays flashable (see
+   [Flashing](#flashing-without-the-button-dance)).
 
 The dataset lives in **RTC memory** (about 1.2 kB — heights are stored as
 millimetre integers), so it survives deep sleep and a redraw costs no network at
