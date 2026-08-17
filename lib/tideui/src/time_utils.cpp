@@ -90,39 +90,49 @@ void tiFormatShortDay(int64_t epoch, char* out, size_t n) {
     snprintf(out, n, "%s", kDayShort[tm.tm_wday % 7]);
 }
 
-void tiFormatDateTime(int64_t epoch, bool hour24, char* out, size_t n) {
+void tiFormatDayDate(int64_t epoch, char* out, size_t n) {
     struct tm tm;
     if (!localParts(epoch, tm)) {
         snprintf(out, n, "--");
         return;
     }
+    snprintf(out, n, "%s %d %s", kDayShort[tm.tm_wday % 7], tm.tm_mday,
+             kMonthShort[tm.tm_mon % 12]);
+}
+
+void tiFormatHourOfDay(int hour, bool hour24, char* out, size_t n) {
     if (hour24) {
-        snprintf(out, n, "%d %s %02d:%02d", tm.tm_mday, kMonthShort[tm.tm_mon % 12], tm.tm_hour,
-                 tm.tm_min);
+        snprintf(out, n, "%02d:00", hour);
     } else {
-        snprintf(out, n, "%d %s %d:%02d %s", tm.tm_mday, kMonthShort[tm.tm_mon % 12],
-                 hour12(tm.tm_hour), tm.tm_min, tm.tm_hour < 12 ? "am" : "pm");
+        snprintf(out, n, "%d %s", hour12(hour), hour < 12 ? "am" : "pm");
     }
 }
 
-void tiFormatAge(int64_t seconds, char* out, size_t n) {
-    if (seconds < 0) seconds = 0;
-    const int64_t minutes = seconds / 60;
-    if (minutes < 1) {
-        snprintf(out, n, "just now");
-    } else if (minutes < 60) {
-        snprintf(out, n, "%lld min ago", (long long)minutes);
-    } else if (minutes < 60 * 48) {
-        snprintf(out, n, "%lldh ago", (long long)(minutes / 60));
-    } else {
-        snprintf(out, n, "%lld days ago", (long long)(minutes / (60 * 24)));
-    }
-}
-
-int64_t tiStartOfLocalDay(int64_t epoch) {
+int64_t tiLocalTimeOfDay(int64_t epoch, int hour) {
     struct tm tm;
     if (!localParts(epoch, tm)) return epoch;
-    return epoch - (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec);
+    tm.tm_hour = hour;
+    tm.tm_min = 0;
+    tm.tm_sec = 0;
+    // Let mktime work out whether that wall clock reading is standard or
+    // daylight time; the caller only ever knows the local hour it wants.
+    tm.tm_isdst = -1;
+    const time_t t = mktime(&tm);
+    return t == (time_t)-1 ? epoch : (int64_t)t;
+}
+
+int64_t tiStartOfTideDay(int64_t epoch, int hour) {
+    int64_t start = tiLocalTimeOfDay(epoch, hour);
+    // Before the boundary the day on screen is still the previous one. Step back
+    // half a day from the boundary rather than a whole day from `epoch`: an hour
+    // lost or gained overnight cannot then carry the search two days back.
+    for (int i = 0; i < 2 && epoch < start; i++) start = tiLocalTimeOfDay(start - 43200, hour);
+    return start;
+}
+
+int64_t tiEndOfTideDay(int64_t start, int hour) {
+    // 36 hours on lands solidly inside the next day whichever way the clocks go.
+    return tiLocalTimeOfDay(start + 36 * 3600, hour);
 }
 
 int tiLocalHour(int64_t epoch) {

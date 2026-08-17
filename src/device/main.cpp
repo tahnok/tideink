@@ -41,24 +41,39 @@ bool refreshDue(int64_t now) {
 }
 
 int64_t secondsUntilNextWake(int64_t now) {
-    int64_t target = now + (int64_t)MAX_SLEEP_MINUTES * 60;
     // MIN_SLEEP_MINUTES keeps the panel from thrashing, but it must not apply to
-    // a wake aimed just after a tide: clamping a four-minute sleep up to fifteen
-    // leaves an event that already happened sitting on the cards until then.
+    // a wake aimed at a moment on the clock: clamping a four-minute sleep up to
+    // fifteen leaves an event that already happened sitting on screen until then.
+    // Each candidate therefore carries the floor that goes with it, and only the
+    // winner's floor is applied.
+    int64_t target = now + (int64_t)MAX_SLEEP_MINUTES * 60;
     int64_t floorSeconds = (int64_t)MIN_SLEEP_MINUTES * 60;
+    // A target in the past is kept rather than skipped -- a download that is
+    // already overdue because the last one failed wants the shortest sleep the
+    // clamp below allows, not the next thing on the calendar.
+    auto consider = [&](int64_t when, int64_t floorSec) {
+        if (when < target) {
+            target = when;
+            floorSeconds = floorSec;
+        }
+    };
+
+    // The screen covers one tide day, so the whole thing turns over at the day
+    // boundary. Without a wake aimed at it the clock could sit on yesterday's
+    // tides for most of a morning.
+    consider(tiEndOfTideDay(tiStartOfTideDay(now, kDayStartHour), kDayStartHour) +
+                 DAY_ROLLOVER_SECONDS,
+             MIN_TIDE_SLEEP_SECONDS);
 
     // Same guard as cacheUsable()/refreshDue(): .valid alone is unvalidated RTC
     // memory until the magic says the struct is ours.
     if (g_cacheMagic == kCacheMagic && g_cache.valid) {
-        const int64_t due = g_cache.fetchedAt + (int64_t)DATA_REFRESH_HOURS * 3600;
-        if (due < target) target = due;
-        // Wake just after the next high or low so the two headline cards always
-        // point at an event that has not happened yet.
+        consider(g_cache.fetchedAt + (int64_t)DATA_REFRESH_HOURS * 3600,
+                 (int64_t)MIN_SLEEP_MINUTES * 60);
+        // Wake just after the next high or low so the row of tides always has an
+        // event that has not happened yet marked as the next one.
         const TideExtreme* next = tideNextAny(g_cache, now);
-        if (next && next->time + WAKE_AFTER_TIDE_SECONDS < target) {
-            target = next->time + WAKE_AFTER_TIDE_SECONDS;
-            floorSeconds = MIN_TIDE_SLEEP_SECONDS;
-        }
+        if (next) consider(next->time + WAKE_AFTER_TIDE_SECONDS, MIN_TIDE_SLEEP_SECONDS);
     }
 
     int64_t seconds = target - now;
@@ -110,14 +125,14 @@ void setup() {
         st.now = now;
         st.hour24 = CLOCK_24H;
         st.banner = status == FetchStatus::kOk ? nullptr : fetchStatusMessage(status);
+        st.batteryPercent = batteryPercent();
+        st.charging = batteryCharging();
         renderTideScreen(canvas, g_cache, st);
 
-        // The screen no longer shows the battery, but the log still should:
-        // it is the only way to see the charge state of a sleeping clock.
         char clock[16];
         tiFormatClock(now, CLOCK_24H, clock, sizeof(clock));
-        Serial.printf("[draw] %s, battery %d%%%s\n", clock, batteryPercent(),
-                      batteryCharging() ? " (charging)" : "");
+        Serial.printf("[draw] %s, battery %d%%%s\n", clock, st.batteryPercent,
+                      st.charging ? " (charging)" : "");
     }
 
     panelShow(canvas);

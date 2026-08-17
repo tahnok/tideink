@@ -52,6 +52,13 @@ const TideExtreme* tideNextExtreme(const TideData& data, int64_t now, bool high)
 // Next extreme of either type, or nullptr.
 const TideExtreme* tideNextAny(const TideData& data, int64_t now);
 
+// Every extreme in [from, to), in time order, written into `out`. Returns how
+// many were written, never more than `max`. A day at a semi-diurnal station
+// holds four: five would span about 24.8 hours, so the count drops to three
+// whenever the fourth falls just the wrong side of the boundary.
+uint8_t tideExtremesIn(const TideData& data, int64_t from, int64_t to, const TideExtreme** out,
+                       uint8_t max);
+
 // Interpolated water level at `t`, in millimetres. Returns false when `t` falls
 // outside the stored curve.
 bool tideHeightAt(const TideData& data, int64_t t, int16_t& outMm);

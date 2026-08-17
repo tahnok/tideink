@@ -1,12 +1,17 @@
 # tideink
 
 A battery-powered tide clock for the [Xteink X4](https://learn.adafruit.com/circuitpython-on-the-xteink-x4-ereader)
-e-paper reader. It shows the next high and low tide for **Charlottetown, PE**
-plus a 48-hour water level graph, using official predictions from the Canadian
-Hydrographic Service. It wakes up a few times a day, downloads once a day, and
-spends the rest of its life in deep sleep.
+e-paper reader. It shows one day of tides for **Charlottetown, PE** — every high
+and low, the water level graph they came from, and tonight's moon — using
+official predictions from the Canadian Hydrographic Service. It wakes up a few
+times a day, downloads once a day, and spends the rest of its life in deep sleep.
 
-![The tide clock screen](docs/screenshots/01-falling.png)
+![The tide clock screen](docs/screenshots/01-morning.png)
+
+The day runs **6 am to 6 am** rather than midnight to midnight, so the tides you
+have not had yet are the ones still on screen when you look at it over breakfast,
+and the graph stays put underneath them instead of sliding along with the clock.
+A dashed cursor marks the current moment and a bar marks the next tide due.
 
 ## Hardware
 
@@ -42,7 +47,7 @@ https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/{id}/data?time-series-code=...
 
 Two series are downloaded per refresh:
 
-- `wlp-hilo` — high and low tide predictions, the numbers on the two cards.
+- `wlp-hilo` — high and low tide predictions, the row across the top.
 - `wlp` — the water level prediction series at hourly resolution, the graph.
 
 The default station is Charlottetown, CHS **01700**, IWLS id
@@ -111,11 +116,12 @@ moment in the tide cycle without waiting for it:
 ```sh
 .pio/build/sim/program \
     --now 2026-08-08T22:30:00Z \
+    --battery 9 \
     --banner "WI-FI UNREACHABLE - SHOWING CACHED PREDICTIONS" \
     --out /tmp/late-night.png
 ```
 
-`--help` lists the rest (`--24h`, `--tz`, `--fetched-ago`, `--message`, …).
+`--help` lists the rest (`--24h`, `--tz`, `--charging`, `--message`, …).
 Fixtures under `test/fixtures/` are unmodified API responses; refresh or
 re-capture them with:
 
@@ -125,7 +131,7 @@ python3 tools/fetch_fixtures.py --from 2026-08-08 --hours 72
 
 | | |
 |---|---|
-| ![rising](docs/screenshots/02-rising.png) | ![near high](docs/screenshots/03-near-high.png) |
+| ![evening](docs/screenshots/02-evening.png) | ![small hours](docs/screenshots/03-small-hours.png) |
 | ![24-hour clock](docs/screenshots/04-24h-clock.png) | ![stale cache](docs/screenshots/05-stale-cache.png) |
 
 ## How it runs on a battery
@@ -148,14 +154,21 @@ millimetre integers), so it survives deep sleep and a redraw costs no network at
 all. The radio is powered for roughly ten seconds a day.
 
 "The next interesting moment" is whichever comes first of: just after the next
-high or low, so the headline cards never point at an event that already
-happened; or the next scheduled download. That is clamped to
-`[MIN_SLEEP_MINUTES, MAX_SLEEP_MINUTES]` — 15 minutes to 6 hours by default —
-which works out to a handful of full-panel refreshes a day. Pressing the front
-panel button wakes it early and forces a fresh download.
+high or low, so the row of tides always marks one that has not happened yet;
+6 am, when the whole screen turns over to the next day; or the next scheduled
+download. That is clamped to `[MIN_SLEEP_MINUTES, MAX_SLEEP_MINUTES]` — 15
+minutes to 6 hours by default — which works out to a handful of full-panel
+refreshes a day. Pressing the front panel button wakes it early and forces a
+fresh download.
+
+Because the graph is pinned to the day rather than to the download, the
+requested window has to reach a full day either side of it: a download landing
+a minute before 6 am is already drawing a day that started 24 hours earlier,
+and the last redraw before the next download is a day further on again. That is
+what `CURVE_HOURS_BEFORE`/`CURVE_HOURS_AFTER` are sized for.
 
 If a download fails the previous cache is kept untouched and the screen gets a
-warning strip instead; the footer always says how old the data is.
+warning strip instead.
 
 ## Configuration
 
@@ -191,6 +204,7 @@ otherwise look like an ordinary connection failure.
 ```
 lib/tideui/          shared: canvas, fonts, tide model, IWLS parser, screen layout
   src/render.cpp     the entire screen design lives here
+  src/moon.cpp       mean synodic moon phase, for the header panel
   src/fonts/         generated bitmap fonts (tools/genfont.py)
 src/device/          firmware: panel driver, HTTPS client, power, deep sleep
 src/host/            simulator: same renderer, PNG output

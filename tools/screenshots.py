@@ -21,15 +21,22 @@ STATION = "CHARLOTTETOWN, PE"
 
 # name -> extra arguments
 SCENES = {
-    "01-falling": ["--now", "2026-08-08T12:00:00Z"],
-    "02-rising": ["--now", "2026-08-08T19:30:00Z"],
-    "03-near-high": ["--now", "2026-08-08T22:30:00Z"],
-    "04-24h-clock": ["--now", "2026-08-08T12:00:00Z", "--24h"],
+    # Mid-morning on a day whose first high fell before the 6 am boundary, so
+    # the row starts on a low and only three tides belong to the day.
+    "01-morning": ["--now", "2026-08-08T12:00:00Z"],
+    # A four-tide day, seen in the evening with two of them already past.
+    "02-evening": ["--now", "2026-08-09T20:00:00Z", "--battery", "54"],
+    # After midnight but before 6 am, so the window is still the one that opened
+    # yesterday morning and the "now" cursor sits near its right-hand edge.
+    "03-small-hours": ["--now", "2026-08-10T04:30:00Z", "--battery", "31"],
+    "04-24h-clock": ["--now", "2026-08-09T20:00:00Z", "--24h"],
     "05-stale-cache": [
         "--now",
         "2026-08-09T05:00:00Z",
         "--fetched-ago",
         "97200",
+        "--battery",
+        "9",
         "--banner",
         "WI-FI UNREACHABLE - SHOWING CACHED PREDICTIONS",
     ],
@@ -37,6 +44,8 @@ SCENES = {
         "--message",
         "Waiting for Wi-Fi|Connecting to the network and downloading|tide predictions from the CHS.",
     ],
+    # On the cable, topping up.
+    "07-charging": ["--now", "2026-08-09T13:00:00Z", "--battery", "83", "--charging"],
 }
 
 

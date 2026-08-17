@@ -16,16 +16,24 @@ void tiSetTimezone(const char* tz);
 int64_t tiParseIso8601(const char* s);
 
 // Local-time formatting. Each writes a NUL-terminated string into `out`.
-void tiFormatClock(int64_t epoch, bool hour24, char* out, size_t n);     // "6:41 pm" / "18:41"
+void tiFormatClock(int64_t epoch, bool hour24, char* out, size_t n);  // "6:41 pm" / "18:41"
 void tiFormatClockParts(int64_t epoch, bool hour24, char* time, size_t timeN, char* suffix,
-                        size_t suffixN);                                 // "6:41" + "PM"
-void tiFormatShortDay(int64_t epoch, char* out, size_t n);               // "Sat"
-void tiFormatDateTime(int64_t epoch, bool hour24, char* out, size_t n);  // "8 Aug 06:12"
+                        size_t suffixN);                              // "6:41" + "PM"
+void tiFormatShortDay(int64_t epoch, char* out, size_t n);            // "Sat"
+void tiFormatDayDate(int64_t epoch, char* out, size_t n);             // "Sat 8 Aug"
+// The hour a tide day starts, on its own: "6 am" / "06:00".
+void tiFormatHourOfDay(int hour, bool hour24, char* out, size_t n);
 
-// "4h ago", "12 min ago"
-void tiFormatAge(int64_t seconds, char* out, size_t n);
+// `hour` o'clock local time on the day that contains `epoch`. Goes through
+// mktime(), so the result is a real local hour even on the two days a year
+// daylight saving makes 23 or 25 hours long.
+int64_t tiLocalTimeOfDay(int64_t epoch, int hour);
 
-// Local midnight at or before `epoch`.
-int64_t tiStartOfLocalDay(int64_t epoch);
+// The screen shows one "tide day" running from `hour` o'clock to `hour` o'clock
+// rather than midnight to midnight. These bracket the one containing `epoch`;
+// pass the start back to tiEndOfTideDay() for its end.
+int64_t tiStartOfTideDay(int64_t epoch, int hour);
+int64_t tiEndOfTideDay(int64_t start, int hour);
+
 // Local hour-of-day (0-23) for `epoch`.
 int tiLocalHour(int64_t epoch);

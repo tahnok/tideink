@@ -29,12 +29,16 @@
 // redrawn from the cached predictions in between.
 #define DATA_REFRESH_HOURS 24
 // Requested window, relative to the moment of the download. It has to cover the
-// graph for every redraw until the next download:
-//   graph end = fetch + DATA_REFRESH_HOURS + kGraphHoursAfter
-#define CURVE_HOURS_BEFORE 8
-#define CURVE_HOURS_AFTER 68
-#define HILO_HOURS_BEFORE 12
-#define HILO_HOURS_AFTER 76
+// tide day on screen for every redraw until the next download. A download can
+// land a minute before the kDayStartHour boundary, which puts the day already
+// being drawn 24 h behind it, and the last redraw before the next download comes
+// DATA_REFRESH_HOURS later still, which puts that day's end 24 h ahead:
+//   graph start = fetch - 24 h,  graph end = fetch + DATA_REFRESH_HOURS + 24 h
+// The extra couple of hours either side is slack for a late refresh.
+#define CURVE_HOURS_BEFORE 26
+#define CURVE_HOURS_AFTER 50
+#define HILO_HOURS_BEFORE 28
+#define HILO_HOURS_AFTER 52
 // Valid values: ONE_MINUTE, THREE_MINUTES, FIVE_MINUTES, FIFTEEN_MINUTES,
 // SIXTY_MINUTES. Hourly samples are ~10 kB for three days and plot smoothly.
 #define CURVE_RESOLUTION "SIXTY_MINUTES"
@@ -47,6 +51,9 @@
 // Extra delay after a tide so the screen shows the *next* event, not the one
 // that just happened.
 #define WAKE_AFTER_TIDE_SECONDS 90
+// Same idea for the tide day itself: wake just past kDayStartHour rather than
+// exactly on it, so the new day is unambiguously the current one.
+#define DAY_ROLLOVER_SECONDS 60
 // Floor for a wake that is aimed at a tide rather than at the schedule. It only
 // has to be long enough that sleeping is worth the boot, since MIN_SLEEP_MINUTES
 // would otherwise overshoot the very event the wake exists to catch.

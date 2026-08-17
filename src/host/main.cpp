@@ -30,8 +30,10 @@ struct Options {
     std::string banner;
     std::string message;  // when set, render the fallback screen instead
     std::string tz = "AST4ADT,M3.2.0,M11.1.0";
-    int64_t now = -1;         // -1 = middle of the loaded curve
+    int64_t now = -1;  // -1 = a day into the loaded curve
     int64_t fetchedAgo = 3600;
+    int batteryPercent = 76;
+    bool charging = false;
     bool hour24 = false;
 };
 
@@ -60,6 +62,8 @@ void usage() {
         "  --now ISO8601      simulated clock, e.g. 2026-08-08T15:00:00Z\n"
         "  --tz TZSPEC        POSIX TZ string (default Atlantic)\n"
         "  --fetched-ago SEC  age of the cached download (default 3600)\n"
+        "  --battery PCT      battery reading, or -1 to leave it off\n"
+        "  --charging         show the battery as charging\n"
         "  --24h              use a 24-hour clock\n");
 }
 
@@ -88,6 +92,10 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.tz = argv[++i];
         } else if (a == "--fetched-ago" && hasNext) {
             o.fetchedAgo = atoll(argv[++i]);
+        } else if (a == "--battery" && hasNext) {
+            o.batteryPercent = atoi(argv[++i]);
+        } else if (a == "--charging") {
+            o.charging = true;
         } else if (a == "--24h") {
             o.hour24 = true;
         } else {
@@ -143,9 +151,9 @@ int main(int argc, char** argv) {
         data.valid = true;
 
         if (o.now < 0) {
-            // Default to a point far enough into the curve that both the "before"
-            // window and the next high and low are present.
-            o.now = data.curve.startTime + (int64_t)kGraphHoursBefore * 3600;
+            // Default a day into the curve, so the whole tide day around it has
+            // predictions on both sides.
+            o.now = data.curve.startTime + 24 * 3600;
         }
         data.fetchedAt = o.now - o.fetchedAgo;
 
@@ -153,6 +161,8 @@ int main(int argc, char** argv) {
         st.now = o.now;
         st.hour24 = o.hour24;
         st.banner = o.banner.empty() ? nullptr : o.banner.c_str();
+        st.batteryPercent = (int16_t)o.batteryPercent;
+        st.charging = o.charging;
 
         renderTideScreen(canvas, data, st);
         printf("%s: %u extremes, %u curve points, step %us\n", o.out.c_str(), data.extremeCount,

@@ -9,14 +9,18 @@ static const int16_t kScreenWidth = 800;
 static const int16_t kScreenHeight = 480;
 
 struct RenderStatus {
-    int64_t now;         // epoch seconds
-    bool hour24;         // 24-hour clock instead of am/pm
-    const char* banner;  // optional warning strip, e.g. "Wi-Fi unreachable"
+    int64_t now;             // epoch seconds
+    bool hour24;             // 24-hour clock instead of am/pm
+    const char* banner;      // optional warning strip, e.g. "Wi-Fi unreachable"
+    int16_t batteryPercent;  // 0-100, or negative to leave the battery off
+    bool charging;
 };
 
-// Hours of prediction shown on the graph, relative to "now".
-static const int16_t kGraphHoursBefore = 6;
-static const int16_t kGraphHoursAfter = 42;
+// The screen covers one tide day: this local hour through to the same hour the
+// next morning, so a whole day's tides are laid out at once and the graph stops
+// sliding around underneath them. Six is early enough that the day is still
+// ahead of you when you first look at it.
+static const int kDayStartHour = 6;
 
 void renderTideScreen(Canvas& canvas, const TideData& data, const RenderStatus& status);
 
