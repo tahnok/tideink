@@ -12,6 +12,7 @@
 #include "canvas.h"
 #include "config.h"
 #include "iwls_client.h"
+#include "ota.h"
 #include "panel.h"
 #include "power.h"
 #include "render.h"
@@ -93,6 +94,11 @@ void setup() {
     tiSetTimezone(LOCAL_TZ);
     powerBegin();
     panelBegin();
+
+    if (otaButtonHeld()) {
+        Serial.println("[boot] RIGHT held, entering OTA mode");
+        otaEnter();
+    }
 
     const bool manual = wokeFromButton();
     int64_t now = (int64_t)time(nullptr);

@@ -83,6 +83,9 @@ void powerBegin() {
 #if ENABLE_BUTTON_WAKE
     pinMode(PIN_WAKE_BUTTON, WAKE_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
 #endif
+#if ENABLE_OTA_WAKE
+    pinMode(PIN_BUTTON_ADC1, INPUT);
+#endif
 }
 
 uint16_t batteryMillivolts() { return readMillivoltsAveraged(); }
@@ -193,8 +196,13 @@ void deepSleepFor(int64_t seconds) {
     // set it, but a radio session and a panel refresh have run since; a floating
     // pin here wakes the device straight back up.
     pinMode(PIN_WAKE_BUTTON, WAKE_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
+    uint64_t wakeMask = 1ULL << PIN_WAKE_BUTTON;
+#if ENABLE_OTA_WAKE
+    pinMode(PIN_BUTTON_ADC1, INPUT);
+    wakeMask |= 1ULL << PIN_BUTTON_ADC1;
+#endif
     // The ESP32-C3 can wake from deep sleep on any GPIO 0-5.
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_WAKE_BUTTON,
+    esp_deep_sleep_enable_gpio_wakeup(wakeMask,
                                       WAKE_BUTTON_ACTIVE_LOW ? ESP_GPIO_WAKEUP_GPIO_LOW
                                                              : ESP_GPIO_WAKEUP_GPIO_HIGH);
 #endif

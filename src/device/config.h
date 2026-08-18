@@ -103,6 +103,17 @@
 #define WAKE_BUTTON_ACTIVE_LOW 1
 #define ENABLE_BUTTON_WAKE 1
 
+// Front panel button ladder (GPIO1: BACK / CONFIRM / LEFT / RIGHT).
+// RIGHT pulls GPIO1 to ground, making it the only button on this ladder that
+// can trigger a deep-sleep GPIO wake on the C3 (the others stay above the
+// digital LOW threshold). See docs/hardware.md for the full ladder.
+#define PIN_BUTTON_ADC1 1
+#define OTA_BUTTON_RAW 3
+#define OTA_BUTTON_TOLERANCE 200
+#define OTA_TIMEOUT_MS 300000
+#define OTA_HOSTNAME "tideink"
+#define ENABLE_OTA_WAKE 1
+
 // Stay awake instead of deep sleeping while a USB host is attached, so the
 // USB Serial/JTAG port stays enumerated and `pio run -t upload` can reset the
 // chip into its bootloader on its own. Costs nothing on a cable; set to 0 if
