@@ -121,7 +121,8 @@ moment in the tide cycle without waiting for it:
     --out /tmp/late-night.png
 ```
 
-`--help` lists the rest (`--24h`, `--tz`, `--charging`, `--message`, …).
+`--help` lists the rest (`--24h`, `--tz`, `--charging`, `--message`,
+`--low-battery`, …).
 Fixtures under `test/fixtures/` are unmodified API responses; refresh or
 re-capture them with:
 
@@ -139,7 +140,9 @@ python3 tools/fetch_fixtures.py --from 2026-08-08 --hours 72
 Every wake-up does the same short sequence and then goes straight back to deep
 sleep:
 
-1. Read the battery divider and the charge-detect pin.
+1. Read the battery divider and the charge-detect pin. Below
+   `BATTERY_CRITICAL_MV` on battery, stop here and switch off — see
+   [Running out of battery](#running-out-of-battery).
 2. Decide whether the cached predictions are still usable — is the clock set, is
    the cache younger than `DATA_REFRESH_HOURS`, does it still contain a next
    high, a next low, and a curve covering right now?
@@ -169,6 +172,59 @@ what `CURVE_HOURS_BEFORE`/`CURVE_HOURS_AFTER` are sized for.
 
 If a download fails the previous cache is kept untouched and the screen gets a
 warning strip instead.
+
+### Running out of battery
+
+A LiPo that is run all the way flat does not come back the same, and a clock
+that dies mid-refresh leaves half a screen behind it. So the clock stops
+voluntarily while there is still something left in the cell.
+
+When the reading at the top of a wake-up is under `BATTERY_CRITICAL_MV`
+(3450 mV, which is the 0% end of the discharge curve — the clock switches off at
+the point it has been calling empty all along), the whole rest of the sequence
+is skipped — no radio, no download — and instead:
+
+![charge me](docs/screenshots/08-charge-me.png)
+
+Then GPIO13 is driven **low**, which is the same battery latch the clock
+otherwise holds high, run backwards: the cell is cut off the system rail and the
+board stops. Not deep sleep — off, drawing nothing. E-paper needs no power to
+hold an image, so the screen above is what the device shows for as long as it
+sits there, which is the only reason the shutdown is safe to make silent.
+
+Two details worth knowing:
+
+- **One low sample is not a flat battery.** A cell sags under a radio session or
+  a panel refresh and recovers afterwards, so the reading is taken twice
+  `BATTERY_CRITICAL_CONFIRM_MS` apart and both have to agree. A reading under
+  500 mV is treated as a broken sense line rather than a flat cell and does
+  *not* trigger a shutdown — otherwise a bad divider would switch off a board
+  with a full battery and no way to say so.
+- **On a cable, none of this happens.** The check is skipped whenever
+  charge-detect is high, because the rail is not the battery's problem then and
+  the cell is on its way back up. If the latch is released while a cable is
+  still attached the board cannot actually switch off, so that case falls back
+  to deep sleep with the latch left released — pulling the cable finishes the
+  job, and a wake `LOW_BATTERY_RECHECK_MINUTES` later decides again.
+
+To bring it back: plug in USB. Set `ENABLE_LOW_BATTERY_SHUTDOWN` to 0 if you
+would rather it ran the cell down instead.
+
+### The percentage is not a straight line
+
+A LiPo spends almost all of its charge between 3.68 V and 4.06 V and then falls
+off a cliff, so `batteryPercent()` reads a rest-voltage curve (`kLipoCurveMv` in
+[`src/device/power.cpp`](src/device/power.cpp)) rather than interpolating
+between an "empty" and a "full" anchor. The table is the one from the FreeInk
+SDK's `BatteryMonitor`, which is the battery code CrossPoint runs on this same
+board — the only numbers here that have been checked against the hardware
+instead of assumed.
+
+It matters most at exactly the wrong end. The straight line this replaced put
+0% at 3300 mV and read **44% at a cell with 10% left in it**, and 17% at the
+3450 mV shutdown — so the clock would have shown a comfortable-looking number
+and then switched itself off. Values are interpolated inside each 10% notch so
+the readout still moves as the cell drains.
 
 ## Configuration
 

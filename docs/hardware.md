@@ -78,6 +78,13 @@ mV and the press is invisible.
 - `BATTERY_DIVIDER 2.0` in `config.h` is **correct**.
 - Capacity is published as 650 mAh. Not verified here; that needs a discharge
   test, not a probe.
+- The percentage readout uses the FreeInk SDK's rest-voltage notch table
+  (`libs/hardware/BatteryMonitor`, 3450 mV at 0% through 4200 mV at 100%),
+  copied into `kLipoCurveMv` in `src/device/power.cpp`. Its 0% anchor is also
+  what `BATTERY_CRITICAL_MV` is set to. Both are CrossPoint's numbers for this
+  board rather than measurements of this unit; the 4.10–4.21 V seen above while
+  charging is consistent with the 4200 mV top of that table, which is as much
+  corroboration as a probe session can give.
 
 There is **no fuel gauge**. The X3's BQ27220 is absent (see the I²C scan below),
 so the percentage can only ever come from the voltage curve.
@@ -187,6 +194,32 @@ as newer X4s seeming "unresponsive unless connected to USB power". Units appear
 to differ here, so a board that works without asserting GPIO13 is not evidence
 that yours will.
 
+### Running the latch backwards, on purpose
+
+The tide clock now uses the *other* direction too. `powerOff()` in
+[`src/device/power.cpp`](../src/device/power.cpp) drives GPIO13 low and pins it
+there, which is exactly CrossPoint's power-off sequence, to switch the board off
+when the cell reaches `BATTERY_CRITICAL_MV` — see
+[Running out of battery](../README.md#running-out-of-battery).
+
+Same ordering trap, mirrored: `gpio_hold_dis()` first so the pad will accept a
+new level, then drive it low, then `gpio_hold_en()` again so the MOSFET gate is
+held low rather than floating through whatever comes next.
+
+**Not yet verified on hardware.** Two things about this are inference from the
+observed "the board dies within about a second without the latch" behaviour
+rather than measurements of their own:
+
+- That releasing the latch while the board is *running* on battery cuts the rail
+  as promptly as never asserting it does. The failure mode if it does not is
+  benign — the code falls through to a deep sleep with the latch left released,
+  which is where an unlatched board ends up anyway.
+- How the board comes back afterwards. USB certainly works, since the cable
+  supplies the rail regardless of the MOSFET. Whether the power button on GPIO3
+  can also re-latch it depends on whether that button is wired into the gate as
+  a hardware soft-latch or is only an MCU input, which the pin survey cannot
+  distinguish. Assume USB until someone checks.
+
 ### Do not probe GPIO13
 
 The pin survey in `src/diag/` deliberately skips it. Driving the battery latch
@@ -243,6 +276,7 @@ Pressing any button prints its ladder reading and the nearest published rung.
 - [bigbag/papyrix-reader device specifications](https://github.com/bigbag/papyrix-reader/blob/main/docs/device-specifications.md) — X3 vs X4 differences
 - [Xteink X3 GPIO, from firmware analysis](https://gist.github.com/CrazyCoder/1c5f846adee18e21f91e264601a6ddce) — the X3 I²C peripherals this board lacks
 - [crosspoint-reader `lib/hal/HalPowerManager.cpp`](https://github.com/crosspoint-reader/crosspoint-reader) — the GPIO13 battery latch, and the only source that names it
+- [Free-Ink/freeink-sdk `libs/hardware/BatteryMonitor`](https://github.com/Free-Ink/freeink-sdk) — the discharge curve. CrossPoint's hardware code lives in this submodule, not in the reader repo, so grep here rather than there for anything battery, display or input related
 - [usetrmnl/trmnl-firmware issue #313](https://github.com/usetrmnl/trmnl-firmware/issues/313) — X4 battery drain, community notes on its sleep behaviour
 
 Note that the papyrix table lists GPIO20/GPIO0 as an I²C bus. That is the X3

@@ -29,6 +29,7 @@ struct Options {
     std::string station = "CHARLOTTETOWN, PE";
     std::string banner;
     std::string message;  // when set, render the fallback screen instead
+    int lowBatteryMv = 0;  // when non-zero, render the shutdown screen instead
     std::string tz = "AST4ADT,M3.2.0,M11.1.0";
     int64_t now = -1;  // -1 = a day into the loaded curve
     int64_t fetchedAgo = 3600;
@@ -59,6 +60,7 @@ void usage() {
         "  --station NAME     station name recorded in the parsed data\n"
         "  --banner TEXT      warning strip above the cards\n"
         "  --message T|A|B    render the fallback screen with these three lines\n"
+        "  --low-battery MV   render the charge-me shutdown screen at this cell reading\n"
         "  --now ISO8601      simulated clock, e.g. 2026-08-08T15:00:00Z\n"
         "  --tz TZSPEC        POSIX TZ string (default Atlantic)\n"
         "  --fetched-ago SEC  age of the cached download (default 3600)\n"
@@ -86,6 +88,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.banner = argv[++i];
         } else if (a == "--message" && hasNext) {
             o.message = argv[++i];
+        } else if (a == "--low-battery" && hasNext) {
+            o.lowBatteryMv = atoi(argv[++i]);
         } else if (a == "--now" && hasNext) {
             o.now = tiParseIso8601(argv[++i]);
         } else if (a == "--tz" && hasNext) {
@@ -128,7 +132,10 @@ int main(int argc, char** argv) {
     static uint8_t framebuffer[(kScreenWidth / 8) * kScreenHeight];
     Canvas canvas(framebuffer, kScreenWidth, kScreenHeight);
 
-    if (!o.message.empty()) {
+    if (o.lowBatteryMv > 0) {
+        // --now still applies: the screen records when the clock gave up.
+        renderLowBatteryScreen(canvas, (uint16_t)o.lowBatteryMv, o.now < 0 ? 0 : o.now, o.hour24);
+    } else if (!o.message.empty()) {
         std::string lines[3];
         splitPipes(o.message, lines);
         renderMessageScreen(canvas, lines[0].c_str(), lines[1].empty() ? nullptr : lines[1].c_str(),

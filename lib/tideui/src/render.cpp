@@ -362,6 +362,25 @@ void drawFooter(Canvas& c, const RenderStatus& st) {
     drawBattery(c, kScreenWidth - kMargin - 6, base, st.batteryPercent, st.charging);
 }
 
+// Header band and border shared by every full-screen state, so a message and a
+// shutdown notice are recognisably the same object as the tide screen.
+void drawFullScreenChrome(Canvas& c) {
+    c.fillRect(0, 0, kScreenWidth, kHeaderH, kBlack);
+    c.drawTextTracked(kMargin + 6, 38, "TIDE CLOCK", FontH1, 2, kWhite);
+    c.drawRectThick(kMargin, kHeaderH + 24, kScreenWidth - 2 * kMargin,
+                    kScreenHeight - kHeaderH - 48, 2, kBlack);
+}
+
+// A large, deliberately empty battery. The footer gauge is a reassurance drawn
+// small; this one is the message, so it is drawn at a size that reads as a
+// symbol rather than an indicator, and nothing is ever filled in behind it.
+void drawEmptyBatteryGlyph(Canvas& c, int16_t centreX, int16_t top, int16_t bodyW, int16_t bodyH) {
+    const int16_t nubW = 9, nubH = bodyH / 3;
+    const int16_t x = centreX - (bodyW + nubW) / 2;
+    c.drawRectThick(x, top, bodyW, bodyH, 5, kBlack);
+    c.fillRect(x + bodyW, top + (bodyH - nubH) / 2, nubW, nubH, kBlack);
+}
+
 void drawBanner(Canvas& c, const char* text) {
     const int16_t y = kBandY;
     c.fillRectPattern(kMargin, y, kScreenWidth - 2 * kMargin, kBannerH - 4, kCheck50, kBlack);
@@ -393,12 +412,44 @@ void renderTideScreen(Canvas& c, const TideData& data, const RenderStatus& st) {
 
 void renderMessageScreen(Canvas& c, const char* title, const char* line1, const char* line2) {
     c.clear(kWhite);
-    c.fillRect(0, 0, kScreenWidth, kHeaderH, kBlack);
-    c.drawTextTracked(kMargin + 6, 38, "TIDE CLOCK", FontH1, 2, kWhite);
+    drawFullScreenChrome(c);
 
     c.drawTextAligned(kScreenWidth / 2, 210, title, FontH1, kCenter);
     if (line1) c.drawTextAligned(kScreenWidth / 2, 260, line1, FontBody, kCenter);
     if (line2) c.drawTextAligned(kScreenWidth / 2, 292, line2, FontBody, kCenter);
-    c.drawRectThick(kMargin, kHeaderH + 24, kScreenWidth - 2 * kMargin,
-                    kScreenHeight - kHeaderH - 48, 2, kBlack);
+}
+
+void renderLowBatteryScreen(Canvas& c, uint16_t millivolts, int64_t now, bool hour24) {
+    c.clear(kWhite);
+    drawFullScreenChrome(c);
+
+    drawEmptyBatteryGlyph(c, kScreenWidth / 2, 106, 220, 96);
+
+    // The headline is the one thing that has to carry across a room, so it gets
+    // the largest face in the build and the tracking the other all-caps labels
+    // on the clock use.
+    const int16_t w = Canvas::textWidth("CHARGE ME", FontBig, 4);
+    c.drawTextTracked(kScreenWidth / 2 - w / 2, 292, "CHARGE ME", FontBig, 4, kBlack);
+
+    c.drawTextAligned(kScreenWidth / 2, 348,
+                      "The battery is flat and the clock has switched itself off.", FontBody,
+                      kCenter);
+    c.drawTextAligned(kScreenWidth / 2, 380,
+                      "Plug in USB and it picks the tides back up on its own.", FontBody, kCenter);
+
+    // Small print: enough to tell how long it has been sitting here, and what
+    // the cell actually read, without competing with the headline.
+    char note[80];
+    const int32_t hundredths = ((int32_t)millivolts + 5) / 10;
+    if (now > 0) {
+        char clock[16], day[16];
+        tiFormatClock(now, hour24, clock, sizeof(clock));
+        tiFormatDayDate(now, day, sizeof(day));
+        snprintf(note, sizeof(note), "Cell %d.%02d V - switched off %s at %s",
+                 (int)hundredths / 100, (int)hundredths % 100, day, clock);
+    } else {
+        snprintf(note, sizeof(note), "Cell %d.%02d V", (int)hundredths / 100,
+                 (int)hundredths % 100);
+    }
+    c.drawTextAligned(kScreenWidth / 2, 424, note, FontTiny, kCenter);
 }

@@ -27,3 +27,11 @@ void renderTideScreen(Canvas& canvas, const TideData& data, const RenderStatus& 
 // Full-screen fallback used before the first successful download, or when the
 // cached predictions have run out.
 void renderMessageScreen(Canvas& canvas, const char* title, const char* line1, const char* line2);
+
+// The last thing the clock draws before it switches itself off with a flat
+// cell. E-paper holds an image without power, so this screen is what the device
+// shows for however long it sits there dead -- it has to say what happened and
+// what to do about it without any other context. `millivolts` is the reading
+// that triggered the shutdown; `now` is the epoch it happened at, or 0 when the
+// clock was never set.
+void renderLowBatteryScreen(Canvas& canvas, uint16_t millivolts, int64_t now, bool hour24);

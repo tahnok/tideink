@@ -46,6 +46,9 @@ SCENES = {
     ],
     # On the cable, topping up.
     "07-charging": ["--now", "2026-08-09T13:00:00Z", "--battery", "83", "--charging"],
+    # The last thing drawn before the clock switches itself off with a flat cell.
+    # The panel holds this with no power behind it, so it is worth eyeballing.
+    "08-charge-me": ["--low-battery", "3412", "--now", "2026-08-09T20:14:00Z"],
 }
 
 

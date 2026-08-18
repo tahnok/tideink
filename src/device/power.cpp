@@ -10,6 +10,10 @@
 namespace {
 
 #if ENABLE_BATTERY_LATCH
+// Set by powerOff() once the latch has been let go, so the deep sleep it falls
+// back to does not helpfully turn the board back on again.
+bool g_latchReleased = false;
+
 // Assert the battery latch and keep it asserted across deep sleep.
 //
 // Order matters. While a pad is held, configuration writes are staged but do
@@ -25,6 +29,35 @@ void latchBattery() {
     digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
 }
 #endif
+
+// Rest-voltage curve for a 1S LiPo, one entry per 10%. Taken from the FreeInk
+// SDK's BatteryMonitor, which is the battery code CrossPoint runs on this exact
+// board, so it is the one curve here that has been checked against the hardware
+// rather than assumed.
+//
+// The shape is the point. A LiPo spends most of its charge between 3.68 V and
+// 4.06 V and then falls off a cliff, so the straight line from "empty" to "full"
+// this replaced read 44% at a cell that actually had 10% left in it. On a clock
+// that is supposed to warn you before it stops, that is the one error that
+// matters.
+//
+// 0% is anchored at 3.45 V rather than the cell's protection cut-off: below that
+// the remaining runtime is minutes, and it leaves headroom for the sag under an
+// e-paper refresh, the heaviest load the board draws.
+const uint16_t kLipoCurveMv[] = {
+    3450,  //   0%
+    3680,  //  10%
+    3740,  //  20%
+    3770,  //  30%
+    3790,  //  40%
+    3820,  //  50%
+    3870,  //  60%
+    3920,  //  70%
+    3980,  //  80%
+    4060,  //  90%
+    4200,  // 100%
+};
+const uint8_t kLipoCurvePoints = sizeof(kLipoCurveMv) / sizeof(kLipoCurveMv[0]);
 
 uint16_t readMillivoltsAveraged() {
     uint32_t total = 0;
@@ -57,10 +90,39 @@ uint16_t batteryMillivolts() { return readMillivoltsAveraged(); }
 int16_t batteryPercent() {
     const uint16_t mv = batteryMillivolts();
     if (mv < 500) return -1;  // nothing plausible on the divider
-    if (mv <= BATTERY_EMPTY_MV) return 0;
-    if (mv >= BATTERY_FULL_MV) return 100;
-    return (int16_t)((int32_t)(mv - BATTERY_EMPTY_MV) * 100 /
-                     (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
+    if (mv <= kLipoCurveMv[0]) return 0;
+    if (mv >= kLipoCurveMv[kLipoCurvePoints - 1]) return 100;
+    for (uint8_t i = 1; i < kLipoCurvePoints; i++) {
+        if (mv < kLipoCurveMv[i]) {
+            // Interpolated inside the notch rather than snapped to it, so the
+            // readout still moves as the cell drains instead of standing still
+            // for a week and then dropping ten points.
+            const uint16_t lo = kLipoCurveMv[i - 1], hi = kLipoCurveMv[i];
+            return (int16_t)((i - 1) * 10 + (int32_t)(mv - lo) * 10 / (hi - lo));
+        }
+    }
+    return 100;
+}
+
+bool batteryCritical(uint16_t* mv) {
+#if ENABLE_LOW_BATTERY_SHUTDOWN
+    uint16_t reading = batteryMillivolts();
+    if (reading < BATTERY_CRITICAL_MV) {
+        // A cell that has just driven a panel refresh or a radio session reads
+        // low for a moment and then recovers. Give it that moment before
+        // writing the battery off.
+        delay(BATTERY_CRITICAL_CONFIRM_MS);
+        reading = batteryMillivolts();
+    }
+    if (mv) *mv = reading;
+    // Under 500 mV is nothing plausible on the divider -- an unpopulated cell or
+    // a bad read, not a flat battery. Switching off on that would strand a board
+    // whose only fault is a sense line.
+    return reading >= 500 && reading < BATTERY_CRITICAL_MV;
+#else
+    if (mv) *mv = batteryMillivolts();
+    return false;
+#endif
 }
 
 bool batteryCharging() {
@@ -117,9 +179,13 @@ void deepSleepFor(int64_t seconds) {
 #if ENABLE_BATTERY_LATCH
     // The GPIO matrix powers down in deep sleep, so the latch has to be pinned
     // by the RTC hold or the board switches itself off as soon as it sleeps.
-    pinMode(PIN_BATTERY_LATCH, OUTPUT);
-    digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
-    gpio_hold_en((gpio_num_t)PIN_BATTERY_LATCH);
+    // After powerOff() that is exactly what should happen, so the release it
+    // already pinned is left alone rather than undone here.
+    if (!g_latchReleased) {
+        pinMode(PIN_BATTERY_LATCH, OUTPUT);
+        digitalWrite(PIN_BATTERY_LATCH, BATTERY_LATCH_ACTIVE_LEVEL);
+        gpio_hold_en((gpio_num_t)PIN_BATTERY_LATCH);
+    }
     gpio_deep_sleep_hold_en();
 #endif
 #if ENABLE_BUTTON_WAKE
@@ -133,4 +199,28 @@ void deepSleepFor(int64_t seconds) {
                                                              : ESP_GPIO_WAKEUP_GPIO_HIGH);
 #endif
     esp_deep_sleep_start();
+}
+
+void powerOff() {
+#if ENABLE_BATTERY_LATCH
+    Serial.println("[power] battery critical, releasing the latch");
+    Serial.flush();
+
+    // Mirror of latchBattery(), in reverse. The hold has to come off before the
+    // pad will accept a new level, and the level is pinned again straight after
+    // so the MOSFET gate is driven low through deep sleep rather than floating.
+    gpio_hold_dis((gpio_num_t)PIN_BATTERY_LATCH);
+    pinMode(PIN_BATTERY_LATCH, OUTPUT);
+    digitalWrite(PIN_BATTERY_LATCH, !BATTERY_LATCH_ACTIVE_LEVEL);
+    gpio_hold_en((gpio_num_t)PIN_BATTERY_LATCH);
+    g_latchReleased = true;
+
+    // On battery the rail is gone well inside this, and nothing below runs.
+    delay(2000);
+    Serial.println("[power] still running, so the cable is holding the rail up");
+#endif
+    // Only reached on USB (or with the latch compiled out). Sleep on the timer
+    // and let the next boot decide again: by then the cell may have charged, and
+    // if the cable comes out first the released latch finishes the job.
+    deepSleepFor((int64_t)LOW_BATTERY_RECHECK_MINUTES * 60);
 }

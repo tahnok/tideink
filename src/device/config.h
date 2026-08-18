@@ -109,6 +109,28 @@
 // you would rather the clock behave identically plugged in and unplugged.
 #define STAY_AWAKE_ON_USB 1
 
-// LiPo open-circuit voltage range used for the percentage readout.
-#define BATTERY_EMPTY_MV 3300
-#define BATTERY_FULL_MV 4150
+// The percentage readout comes from a rest-voltage curve, not a straight line
+// between two anchors -- a LiPo's discharge is nowhere near linear. The table
+// lives next to the code that reads it, in kLipoCurveMv in power.cpp.
+
+// ------------------------------------------------------------ low battery ---
+// Below BATTERY_CRITICAL_MV the clock stops being a clock: it draws the
+// charge-me screen and releases the battery latch, which cuts the cell off the
+// system rail and switches the board off outright. The e-paper keeps that image
+// with no power behind it, so the dead device still explains itself.
+//
+// 3450 mV is the 0% end of the curve in power.cpp, so the clock switches off at
+// the point it has been calling empty all along rather than at some lower number
+// of its own. That anchor is where a LiPo falls off the cliff -- below it the
+// remaining runtime is minutes -- and it leaves headroom for the sag under the
+// panel refresh that draws the charge-me screen, which is the heaviest current
+// the board ever pulls. Without that headroom the screen is left half-written.
+#define ENABLE_LOW_BATTERY_SHUTDOWN 1
+#define BATTERY_CRITICAL_MV 3450
+// A cell sags under load and recovers, so one low sample is not a flat battery.
+// The reading is taken again after this long and both have to agree.
+#define BATTERY_CRITICAL_CONFIRM_MS 400
+// Only reached when the latch could not switch the board off, i.e. USB is
+// holding the rail up. Wake this often to see whether the cell has taken a
+// charge; on battery nothing is running to wake.
+#define LOW_BATTERY_RECHECK_MINUTES 30

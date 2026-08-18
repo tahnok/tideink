@@ -98,6 +98,21 @@ void setup() {
     int64_t now = (int64_t)time(nullptr);
     bool clockSet = now > kPlausibleEpoch;
 
+#if ENABLE_LOW_BATTERY_SHUTDOWN
+    // Before the radio and before anything else expensive: a cell this low has
+    // one refresh left in it, and it is better spent saying so than on tides
+    // nobody will see updated again. Skipped on a cable, where the rail is not
+    // the battery's problem and the cell is on its way back up anyway.
+    uint16_t criticalMv = 0;
+    if (!batteryCharging() && batteryCritical(&criticalMv)) {
+        Serial.printf("[boot] battery critical at %u mV, shutting down\n", (unsigned)criticalMv);
+        Canvas canvas(panelFramebuffer(), kScreenWidth, kScreenHeight);
+        renderLowBatteryScreen(canvas, criticalMv, clockSet ? now : 0, CLOCK_24H);
+        panelShow(canvas);
+        powerOff();  // does not return on battery
+    }
+#endif
+
     FetchStatus status = FetchStatus::kOk;
     if (!clockSet || manual || refreshDue(now) || !cacheUsable(now)) {
         Serial.printf("[boot] refreshing (clock %s, manual %d)\n", clockSet ? "set" : "unset",
