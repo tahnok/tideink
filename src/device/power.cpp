@@ -83,8 +83,8 @@ bool usbAttached() {
     return HWCDC::isPlugged();
 }
 
-int64_t stayAwakeFor(int64_t seconds) {
-    if (seconds > (int64_t)MAX_SLEEP_MINUTES * 60) seconds = (int64_t)MAX_SLEEP_MINUTES * 60;
+int64_t stayAwakeFor(int64_t seconds, int64_t capSeconds) {
+    if (capSeconds > 0 && seconds > capSeconds) seconds = capSeconds;
     if (seconds < 0) seconds = 0;
 
     Serial.printf("[power] USB attached, staying awake %lld s instead of sleeping\n",
@@ -108,6 +108,33 @@ int64_t stayAwakeFor(int64_t seconds) {
     }
 }
 
+// The deep sleep below is as deep as this board goes, which is worth spelling
+// out because the temptation is to reach for esp_sleep_pd_config() and force
+// domains off by hand. On the C3 that is at best a no-op and at worst a way to
+// lose the cache:
+//
+//   RTC fast memory   stays on, and has to -- it holds the tide predictions and
+//                     the wake target that make a redraw free. About 8 kB of
+//                     retained SRAM, a fraction of a microamp.
+//   RTC peripherals   already off. ESP-IDF only keeps this domain up for touch,
+//                     ULP and ext0 wakeups, none of which the C3 has or this
+//                     firmware arms. Deep-sleep GPIO wakeup runs off the
+//                     always-on VDD3P3_RTC pads instead, so the button costs
+//                     nothing here.
+//   RTC 8 MHz osc     already off. It is only held up when the slow clock is
+//                     derived from it; this board's slow clock is the 150 kHz
+//                     RC oscillator.
+//   XTAL, CPU, flash  already off, unconditionally, in deep sleep.
+//
+// Everything above is what ESP_PD_OPTION_AUTO -- the default every domain is
+// left at -- already resolves to, so there is nothing left to switch off. What
+// remains is the RTC timer, the retained memory, and the two pads held below.
+// Hibernation, the one mode deeper than this, drops the retained memory: the
+// clock would come back knowing nothing, download on every wake, and spend more
+// energy on radio than it saved on leakage.
+//
+// The board's own draw is a separate matter and dwarfs all of it -- see the
+// battery-sense divider note in docs/hardware.md.
 void deepSleepFor(int64_t seconds) {
     if (seconds < 60) seconds = 60;
     Serial.printf("[power] sleeping for %lld s\n", (long long)seconds);

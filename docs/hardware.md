@@ -82,6 +82,32 @@ mV and the press is invisible.
 There is **no fuel gauge**. The X3's BQ27220 is absent (see the I²C scan below),
 so the percentage can only ever come from the voltage curve.
 
+### The divider is probably what drains the battery
+
+Not measured here, but worth stating plainly, because it changes what firmware
+is even worth optimising. If the divider really is 2×10 kΩ, it is 20 kΩ hung
+permanently across the cell, and it never switches off: GPIO0 is the tap between
+the two resistors, not a gate, so there is nothing firmware can do about it.
+
+| | continuous | per day | from 650 mAh |
+|---|---|---|---|
+| Divider at 2×10 kΩ, cell at 3.9 V | ~195 µA | ~4.7 mAh | ~140 days |
+| ESP32-C3 in deep sleep, RTC memory retained (datasheet) | ~5 µA | ~0.12 mAh | — |
+| One wake a day: boot, download, full refresh | — | ~0.3 mAh | — |
+
+That is arithmetic from a published resistor value and a datasheet figure, not a
+bench reading, so treat the first row as a hypothesis. But if it holds, the
+divider costs more than an order of magnitude more than everything the firmware
+does put together, and no amount of scheduling will move the runtime much.
+
+**Measure it before optimising anything else.** Put a meter in series with the
+cell and let the clock go to sleep; the reading settles a few seconds after the
+panel finishes. Roughly 200 µA means the divider dominates and the fix is a
+hardware one -- larger resistors, or a MOSFET gating the bottom leg from a spare
+GPIO so the divider only draws while a reading is being taken. Roughly 5–10 µA
+means the divider is already high-impedance and the firmware schedule is what
+sets the runtime.
+
 ## Charge / USB detect — `config.h` was wrong
 
 GPIO20 is **driven HIGH when USB is attached** and reads **LOW when the cable is
