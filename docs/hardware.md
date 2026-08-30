@@ -84,10 +84,16 @@ so the percentage can only ever come from the voltage curve.
 
 ### The divider is probably what drains the battery
 
-Not measured here, but worth stating plainly, because it changes what firmware
-is even worth optimising. If the divider really is 2×10 kΩ, it is 20 kΩ hung
-permanently across the cell, and it never switches off: GPIO0 is the tap between
-the two resistors, not a gate, so there is nothing firmware can do about it.
+Not measured here, but worth stating plainly, because it changes what firmware is
+even worth optimising. The resistor values are published rather than probed --
+the [open-x4 sample firmware](https://github.com/open-x4-epaper/sample-firmware)
+says "GPIO0 is connected to the battery via a voltage divider (2x10K resistors),
+reading 1/2 of the actual voltage", and
+[Adafruit's X4 pinout](https://learn.adafruit.com/circuitpython-on-the-xteink-x4-ereader/pinouts)
+independently confirms a divider on GPIO0 without giving values. Nobody appears to
+have published a measured sleep current for this board at all.
+
+If 2×10 kΩ is right, that is 20 kΩ across the cell:
 
 | | continuous | per day | from 650 mAh |
 |---|---|---|---|
@@ -98,7 +104,18 @@ the two resistors, not a gate, so there is nothing firmware can do about it.
 That is arithmetic from a published resistor value and a datasheet figure, not a
 bench reading, so treat the first row as a hypothesis. But if it holds, the
 divider costs more than an order of magnitude more than everything the firmware
-does put together, and no amount of scheduling will move the runtime much.
+does put together, and no amount of scheduling will move the runtime much. 20 kΩ
+is also aggressive for a battery divider -- hobby boards that care about sleep
+current usually run 2×100 kΩ or higher -- which is itself a hint about where it
+sits in the circuit.
+
+**Which side of the GPIO13 latch is it on?** Unpublished, and it decides both how
+bad this is and what the fix looks like. Downstream of the latch MOSFET, the
+divider only draws while the board is powered, so the stock reader escapes it
+entirely by dropping GPIO13 when the user closes it -- and a tide clock, which
+holds that latch on for ever precisely so it *does* keep running, pays it around
+the clock by design. Upstream, on the cell itself, it drains a shelf-stored X4
+too. Either way the clock pays; only the stock firmware's behaviour differs.
 
 **Measure it before optimising anything else.** Put a meter in series with the
 cell and let the clock go to sleep; the reading settles a few seconds after the
@@ -107,6 +124,14 @@ hardware one -- larger resistors, or a MOSFET gating the bottom leg from a spare
 GPIO so the divider only draws while a reading is being taken. Roughly 5–10 µA
 means the divider is already high-impedance and the firmware schedule is what
 sets the runtime.
+
+For a sense of what the second case looks like, the Inkplate 2 -- an ESP32 e-paper
+board built for exactly this kind of once-a-day sketch -- is
+[specified at 20–30 µA in deep sleep](https://docs.soldered.com/inkplate/2/low-power/deep-sleep/)
+and has **no battery monitoring hardware at all**: `readBattery()` is
+[unsupported on that model](https://inkplate.readthedocs.io/en/latest/arduino.html).
+No divider, no leak, and no battery percentage on screen either. That is the
+trade this board made in the other direction.
 
 ## Charge / USB detect — `config.h` was wrong
 

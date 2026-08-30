@@ -237,12 +237,14 @@ already drawn today.
 this next to the code.
 
 **The board's own draw is the part that actually sets the runtime**, and it is
-not something firmware can reach. If the battery-sense divider is the 2×10 kΩ
-its sample firmware describes, it hangs ~195 µA permanently across the cell —
-around forty times the sleeping chip, and more than everything the firmware does
-put together. Measure the sleeping current before optimising anything else;
+not something firmware can reach. If the battery-sense divider is the 2×10 kΩ the
+open-x4 sample firmware describes, it hangs ~195 µA across the cell — around
+forty times the sleeping chip, and more than everything the firmware does put
+together. That figure is arithmetic from a published resistor value, not a bench
+reading; nobody appears to have measured this board's sleep current. Measure it
+before optimising anything else.
 [`docs/hardware.md`](docs/hardware.md#the-divider-is-probably-what-drains-the-battery)
-has the arithmetic and what to do about it.
+has the arithmetic, the sources, and what to do about each outcome.
 
 Because the graph is pinned to the day rather than to the download, the
 requested window has to reach a full day either side of it: a download landing
