@@ -138,25 +138,37 @@ trade this board made in the other direction.
 There is a microSD slot on the shared SPI bus (CS on GPIO12, MISO on GPIO7,
 SCK/MOSI shared with the panel), and writing a month of predictions to it instead
 of three days into RTC memory is an obvious-looking way to cut the radio down.
-The arithmetic goes the wrong way.
+The arithmetic goes the wrong way, and not by a little.
 
-The clock has to reach NTP every day regardless -- the RC oscillator drifts about
-1% and nothing on the card fixes that -- so the card can only save the two HTTPS
-fetches, not the Wi-Fi association. Against that:
+An inserted card is powered whether or not anything ever talks to it. The socket
+has a dedicated **VDD contact** wired to the 3.3 V rail -- the card is not sipping
+parasitically off the SPI lines, it is a live device sitting in a live socket --
+and it draws its idle current from the moment the rail comes up.
 
-| | continuous | per day |
-|---|---|---|
-| Best-case card left powered and idle, measured | ~70 µA | ~1.7 mAh |
-| Typical spec cap for a card in power-save mode | ~250 µA | ~6 mAh |
-| What dropping the downloads would save | — | ~0.15 mAh |
-| The entire daily wake -- boot, radio, full refresh | — | ~0.3 mAh |
+How much is entirely down to which card. Measurements from people who chase this
+seriously:
 
-An inserted card costs about ten times what it would save, and more than the whole
-daily wake cycle put together. The
-[Cave Pearl Project](https://thecavepearlproject.org/2017/05/21/switching-off-sd-cards-for-low-power-data-logging/)
-hit exactly this on multi-year loggers -- sleeping cards ended up "the largest
-remaining power consumer" -- and their answer was to cut power to the card
-entirely between samples rather than to manage its sleep current.
+| Card | idle in SPI mode | per day | 650 mAh lasts |
+|---|---|---|---|
+| Sandisk Ultra ([Gough Lui, 2021](https://goughlui.com/2021/02/27/experiment-microsd-card-power-consumption-spi-performance/)) | ~1.25 mA | ~30 mAh | ~3 weeks |
+| Verbatim Premium (same) | ~1.45 mA | ~35 mAh | ~19 days |
+| Genuine Sandisk in a logger ([Cave Pearl, 2014](https://thecavepearlproject.org/2014/09/22/high-sleep-current-problem-solved/)) | 0.2–0.3 mA | 5–7 mAh | 3–4 months |
+| Best sleeper found ([Cave Pearl, 2017](https://thecavepearlproject.org/2017/05/21/switching-off-sd-cards-for-low-power-data-logging/)) | ~70 µA | ~1.7 mAh | ~1 year |
+| Delkin industrial SLC (Gough Lui) | ~0.15 mA | ~3.6 mAh | ~6 months |
+| Counterfeit cards, or pins left floating (Cave Pearl) | 2–5 mA | 48–120 mAh | days |
+
+Against that, the most a card could save is the two HTTPS fetches -- around
+0.15 mAh a day. The clock has to reach NTP daily regardless, because the RC
+oscillator drifts about 1% and nothing on the card fixes that, so the Wi-Fi
+association stays either way. The entire daily wake, boot and radio and full
+panel refresh together, is only about 0.3 mAh.
+
+So a typical consumer card costs **a hundred times** what it would save, and would
+by itself flatten the battery in about three weeks. Even the best-behaved card
+found in years of looking costs ten times the saving. The Cave Pearl loggers hit
+exactly this -- sleeping cards ended up "the largest remaining power consumer" --
+and the answer was to cut power to the card entirely between samples rather than
+to manage its sleep current.
 
 Which is the thing this board may not let us do. Nobody has published whether the
 X4's slot has its own power gate, and the one candidate is GPIO13: the X3 pin map
@@ -164,12 +176,22 @@ calls it **"Power/SD control"**, and on the X4 it is the battery latch this
 firmware has to hold HIGH to run at all. If that is one net, the card cannot be
 powered down without powering the clock down with it.
 
-So: **if there is a card in the slot, taking it out is probably worth more than
-any firmware change in this repository.** The same meter test that settles the
-divider settles this one -- measure the sleeping current with a card in and with
-the slot empty. Only if the difference is negligible, or a separate gate turns up,
-is SD worth revisiting; and then it buys robustness across a battery swap, which
-RTC memory genuinely cannot survive, rather than battery life.
+And gating VDD is not on its own enough. Cut the card's power while the SPI lines
+are still driven and it back-feeds through the protection diodes on CLK/CMD/DAT
+and never actually sleeps -- the Cave Pearl write-up pulls MOSI, MISO and CS up
+and CLK down, simultaneously, before dropping the rail. The related trap is
+floating pins on a *powered* card: Sandisk's own note says the host has to pull
+the unused lines up or "non-expected high current consumption may occur", which is
+where those 2–5 mA readings come from. This board does put external pull-ups on
+GPIO7 and GPIO12 (both probe as driven high), so it is at least not the worst
+case.
+
+So: **if there is a card in the slot, taking it out is almost certainly worth more
+than any firmware change in this repository** -- plausibly more than the battery
+divider too. The same meter test settles it: measure the sleeping current with a
+card in, then with the slot empty. Only if the difference is negligible, or a
+separate gate turns up, is SD worth revisiting; and then it buys robustness across
+a battery swap, which RTC memory genuinely cannot survive, rather than runtime.
 
 ## Charge / USB detect — `config.h` was wrong
 
