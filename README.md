@@ -198,17 +198,43 @@ three panel refreshes rather than seventy-seven.
 
 ### How deep the sleep goes
 
-As deep as this board goes. The tempting next step is `esp_sleep_pd_config()`,
-and on the C3 it has nothing left to switch off: the RTC peripherals domain and
-the 8 MHz oscillator are already powered down by default (deep-sleep GPIO wakeup
-runs off the always-on pads, and the slow clock is the 150 kHz RC oscillator, so
-neither domain is needed), and XTAL, CPU and flash go down unconditionally. What
-stays up is the RTC timer, the ~8 kB of retained memory holding the predictions,
-and two held pads — the battery latch on GPIO13, which the board switches itself
-off without, and the wake button. Hibernation is the one mode deeper, and it
-drops the retained memory: the clock would wake knowing nothing and spend more
-on the radio than it saved on leakage. `deepSleepFor()` in
-[`src/device/power.cpp`](src/device/power.cpp) spells this out in full.
+As deep as it usefully can. Two things look like free current here and are not.
+
+**Forcing power domains off by hand** (`esp_sleep_pd_config`) has nothing left to
+switch off. On the C3 the RTC peripherals domain is flagged down on every sleep —
+the chip does not even define `SOC_PM_SUPPORT_RTC_PERIPH_PD`, and deep-sleep GPIO
+wakeup runs off the always-on pads instead — the 8 MHz oscillator goes down
+because the slow clock is the 150 kHz RC one, and XTAL, CPU and flash go down
+unconditionally. The one state genuinely below this is ultra-low-power deep
+sleep, and the wake button rules that out on its own: an RTC IO cannot be used as
+an input in ultra-low mode.
+
+**Hibernating and booting fresh each time** is the sharper idea, because every
+scheduled wake brings the radio up for NTP and the download anyway — so what is
+the cached data doing? On a good day, nothing: simulated over 60 clean days,
+retaining and hibernating are identical, 61 refreshes and 61 radio sessions
+either way. But it does not save anything either:
+
+- The memory is powered whether or not the firmware uses it. ESP-IDF turns the
+  `AUTO` default for RTC fast memory into `ON` unconditionally, so the
+  deep-sleep stub has somewhere to run. The 1.2 kB cache rides along for free.
+- The ESP32-C3 datasheet publishes exactly one deep-sleep figure — **5 µA,
+  "RTC timer + RTC memory"**, measured with the memory powered — and no
+  hibernation figure at all. The next row down is the chip switched off at 1 µA,
+  which cannot wake on a timer. So the entire prize is under 4 µA, and really
+  much less, since the RTC timer, PMU and RTC watchdog stay up either way.
+
+What the retained memory buys is the panel on the bad days, not the chip on the
+good ones. Simulated over 30 days with Wi-Fi down for four of them: retaining
+costs 30 panel refreshes, only one of which is the "no tide predictions yet"
+placeholder — the rest show yesterday's still-valid predictions under a warning
+strip. Hibernating costs 104 refreshes, 76 of them the placeholder. Same for an
+oscillator that overshoots the drift pad: 61 refreshes over 60 days retaining,
+121 hibernating, because a clock that remembers nothing cannot tell that it has
+already drawn today.
+
+`deepSleepFor()` in [`src/device/power.cpp`](src/device/power.cpp) records all of
+this next to the code.
 
 **The board's own draw is the part that actually sets the runtime**, and it is
 not something firmware can reach. If the battery-sense divider is the 2×10 kΩ

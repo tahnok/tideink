@@ -108,30 +108,45 @@ int64_t stayAwakeFor(int64_t seconds, int64_t capSeconds) {
     }
 }
 
-// The deep sleep below is as deep as this board goes, which is worth spelling
-// out because the temptation is to reach for esp_sleep_pd_config() and force
-// domains off by hand. On the C3 that is at best a no-op and at worst a way to
-// lose the cache:
+// This is as deep as the clock can usefully sleep. The reasoning is worth
+// recording, because the two obvious next moves -- esp_sleep_pd_config() to
+// force domains off by hand, and dropping the RTC memory to "hibernate" and
+// boot fresh each time -- both look like free current and are not.
 //
-//   RTC fast memory   stays on, and has to -- it holds the tide predictions and
-//                     the wake target that make a redraw free. About 8 kB of
-//                     retained SRAM, a fraction of a microamp.
-//   RTC peripherals   already off. ESP-IDF only keeps this domain up for touch,
-//                     ULP and ext0 wakeups, none of which the C3 has or this
-//                     firmware arms. Deep-sleep GPIO wakeup runs off the
-//                     always-on VDD3P3_RTC pads instead, so the button costs
-//                     nothing here.
-//   RTC 8 MHz osc     already off. It is only held up when the slow clock is
-//                     derived from it; this board's slow clock is the 150 kHz
-//                     RC oscillator.
-//   XTAL, CPU, flash  already off, unconditionally, in deep sleep.
+//   RTC fast memory   Stays on, and would stay on even if this firmware kept
+//                     nothing in it: ESP-IDF turns the AUTO default into ON
+//                     unconditionally, so that the deep-sleep stub has somewhere
+//                     to run (get_power_down_flags() in sleep_modes.c). The
+//                     cached predictions ride along in a domain that is powered
+//                     either way. Forcing it off is possible, but the C3
+//                     datasheet publishes exactly one deep-sleep figure -- 5 uA,
+//                     "RTC timer + RTC memory", measured with the memory powered
+//                     -- and no hibernation figure at all. The next row down is
+//                     the chip switched off at 1 uA, which cannot wake on a
+//                     timer. So the whole prize is under 4 uA, and in truth much
+//                     less: the RTC timer, the PMU and the RTC watchdog stay up
+//                     either way.
+//   RTC peripherals   Already off. The C3 does not define
+//                     SOC_PM_SUPPORT_RTC_PERIPH_PD at all, so IDF never has a
+//                     reason to hold the domain up and flags it down on every
+//                     sleep. Deep-sleep GPIO wakeup still works: on this chip it
+//                     runs off the always-on VDD3P3_RTC pads, not that domain.
+//   RTC 8 MHz osc     Already off. It is only held up when the slow clock is
+//                     derived from it, and this board's slow clock is the
+//                     150 kHz RC oscillator.
+//   XTAL, CPU, flash  Already off, unconditionally, in deep sleep.
 //
-// Everything above is what ESP_PD_OPTION_AUTO -- the default every domain is
-// left at -- already resolves to, so there is nothing left to switch off. What
-// remains is the RTC timer, the retained memory, and the two pads held below.
-// Hibernation, the one mode deeper than this, drops the retained memory: the
-// clock would come back knowing nothing, download on every wake, and spend more
-// energy on radio than it saved on leakage.
+// The one state genuinely below this is ultra-low-power deep sleep, and it is
+// the wake button that rules it out rather than the cache: IDF sets
+// RTC_SLEEP_NO_ULTRA_LOW unless ultra-low is explicitly enabled, and in
+// ultra-low an RTC IO cannot be used as an input at all.
+//
+// So the retained memory is not buying the chip anything -- it buys the *panel*.
+// Every scheduled wake brings the radio up for NTP and the download anyway, so a
+// good day runs identically either way. It is the bad days that differ: see
+// drawnScreenId() in main.cpp, which is what keeps yesterday's still-valid
+// predictions on screen through a failed refresh instead of a placeholder, and
+// what stops an outage's hourly retries from repainting all 800x480 every hour.
 //
 // The board's own draw is a separate matter and dwarfs all of it -- see the
 // battery-sense divider note in docs/hardware.md.
