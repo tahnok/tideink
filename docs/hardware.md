@@ -133,6 +133,44 @@ and has **no battery monitoring hardware at all**: `readBattery()` is
 No divider, no leak, and no battery percentage on screen either. That is the
 trade this board made in the other direction.
 
+### The microSD slot is a power question, not a storage one
+
+There is a microSD slot on the shared SPI bus (CS on GPIO12, MISO on GPIO7,
+SCK/MOSI shared with the panel), and writing a month of predictions to it instead
+of three days into RTC memory is an obvious-looking way to cut the radio down.
+The arithmetic goes the wrong way.
+
+The clock has to reach NTP every day regardless -- the RC oscillator drifts about
+1% and nothing on the card fixes that -- so the card can only save the two HTTPS
+fetches, not the Wi-Fi association. Against that:
+
+| | continuous | per day |
+|---|---|---|
+| Best-case card left powered and idle, measured | ~70 µA | ~1.7 mAh |
+| Typical spec cap for a card in power-save mode | ~250 µA | ~6 mAh |
+| What dropping the downloads would save | — | ~0.15 mAh |
+| The entire daily wake -- boot, radio, full refresh | — | ~0.3 mAh |
+
+An inserted card costs about ten times what it would save, and more than the whole
+daily wake cycle put together. The
+[Cave Pearl Project](https://thecavepearlproject.org/2017/05/21/switching-off-sd-cards-for-low-power-data-logging/)
+hit exactly this on multi-year loggers -- sleeping cards ended up "the largest
+remaining power consumer" -- and their answer was to cut power to the card
+entirely between samples rather than to manage its sleep current.
+
+Which is the thing this board may not let us do. Nobody has published whether the
+X4's slot has its own power gate, and the one candidate is GPIO13: the X3 pin map
+calls it **"Power/SD control"**, and on the X4 it is the battery latch this
+firmware has to hold HIGH to run at all. If that is one net, the card cannot be
+powered down without powering the clock down with it.
+
+So: **if there is a card in the slot, taking it out is probably worth more than
+any firmware change in this repository.** The same meter test that settles the
+divider settles this one -- measure the sleeping current with a card in and with
+the slot empty. Only if the difference is negligible, or a separate gate turns up,
+is SD worth revisiting; and then it buys robustness across a battery swap, which
+RTC memory genuinely cannot survive, rather than battery life.
+
 ## Charge / USB detect — `config.h` was wrong
 
 GPIO20 is **driven HIGH when USB is attached** and reads **LOW when the cable is
