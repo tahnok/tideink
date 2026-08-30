@@ -58,10 +58,8 @@
 // The nicety it gives up: everything on screen that tracks the clock rather
 // than the calendar -- the cursor on the graph, the "now N.N m above chart
 // datum" readout, the bar marking the next tide due -- is only true at the
-// moment of the draw, and by evening it is pointing at the morning. Set
-// WAKE_FOR_EACH_TIDE to 1 to also wake just after every high and low, which
-// keeps that bar honest at the cost of four or five more panel refreshes a day.
-#define WAKE_FOR_EACH_TIDE 0
+// moment of the draw, and by evening it is pointing at the morning. That is the
+// trade, and it is deliberate.
 
 // Wake just past kDayStartHour rather than exactly on it, so the new day is
 // unambiguously the current one.
@@ -93,20 +91,14 @@
 // handful of radio sessions a day rather than a hundred.
 #define RETRY_SLEEP_MINUTES 60
 
-// Floor and ceiling for a scheduled sleep. The floor keeps a redraw from
-// thrashing the panel. The ceiling is a backstop rather than a schedule --
-// nothing should ever ask for longer than the 24 h plus rollover that the day
-// boundary needs.
-#define MIN_SLEEP_MINUTES 15
+// Floor and ceiling for a scheduled sleep. Neither is a schedule; both are
+// guards. The floor only has to be long enough that sleeping is worth the boot,
+// for the case where a wake lands a few seconds short of the boundary it was
+// aimed at. The ceiling catches a day boundary that comes back absurd -- a
+// broken TZ, a nonsense clock -- because the cost of getting that wrong on a
+// device in a window is a clock that sleeps for years.
+#define MIN_SLEEP_SECONDS 60
 #define MAX_SLEEP_MINUTES 1500
-// Extra delay after a tide so the screen shows the *next* event, not the one
-// that just happened. Only reached when WAKE_FOR_EACH_TIDE is on.
-#define WAKE_AFTER_TIDE_SECONDS 90
-// Floor for a wake that is aimed at a moment on the clock rather than at the
-// schedule. It only has to be long enough that sleeping is worth the boot, since
-// MIN_SLEEP_MINUTES would otherwise overshoot the very event the wake exists to
-// catch.
-#define MIN_TIDE_SLEEP_SECONDS 60
 
 #define WIFI_TIMEOUT_MS 25000
 #define NTP_TIMEOUT_MS 15000

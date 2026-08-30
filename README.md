@@ -161,9 +161,9 @@ front panel button wakes it early and forces a fresh download.
 What one wake a day gives up is everything on the screen that follows the clock
 rather than the calendar: the cursor on the graph, the `now N.N m above chart
 datum` readout, and the bar marking the next tide due are all true at the moment
-of the draw and drift through the day. Set `WAKE_FOR_EACH_TIDE` to 1 in
-`config.h` to also wake just after every high and low, which keeps that bar
-honest at the cost of four or five more panel refreshes a day.
+of the draw and drift through the day. That is the trade, and it is deliberate —
+waking for each high and low instead would keep that bar honest at the cost of
+four or five more full-panel refreshes a day.
 
 ### Waking at the right time without a crystal
 

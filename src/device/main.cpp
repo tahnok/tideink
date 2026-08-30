@@ -74,27 +74,20 @@ bool refreshDue(int64_t now) {
 // the clock puts the panel down again rather than redrawing yesterday and
 // sitting on it. The status goes in too, so a refresh that starts or stops
 // failing still gets its banner onto the screen.
-//
-// With WAKE_FOR_EACH_TIDE on, the cursor and the next-tide bar move between
-// draws within a day, so every tide screen is new.
 uint32_t drawnScreenId(bool clockSet, bool haveTides, FetchStatus status, int64_t now) {
     if (!clockSet) return 0x100u;
     if (!haveTides) return 0x200u | (uint32_t)status;
-#if WAKE_FOR_EACH_TIDE
-    (void)now;
-    return 0;
-#else
     // Counted in hours, not days: consecutive tide-day boundaries are 23, 24 or
     // 25 hours apart across a daylight saving change, and dividing by 86400
     // would risk landing two of them in the same bucket.
     const uint32_t hour = (uint32_t)(tiStartOfTideDay(now, kDayStartHour) / 3600);
     return 0x80000000u | (hour << 3) | (uint32_t)status;
-#endif
 }
 
-// When to come back. With WAKE_FOR_EACH_TIDE off there is normally exactly one
-// candidate -- the tide-day boundary, where the screen turns over and the
-// download happens -- and the answer is "in about 24 hours".
+// When to come back. The screen covers one tide day, so the whole thing turns
+// over at the day boundary -- new tides, new graph, and the download that
+// provides them -- and that is the only moment worth waking for. The answer is
+// therefore "in about 24 hours" every time, bar a failed refresh.
 int64_t secondsUntilNextWake(int64_t now, bool refreshFailed) {
     // A refresh that failed has nothing new to show, so it does not wait for the
     // boundary: come back sooner and try the radio again. This is also the only
@@ -104,45 +97,15 @@ int64_t secondsUntilNextWake(int64_t now, bool refreshFailed) {
         return (int64_t)RETRY_SLEEP_MINUTES * 60 * (1000 + SLEEP_DRIFT_PERMILLE) / 1000;
     }
 
-    // MIN_SLEEP_MINUTES keeps the panel from thrashing, but it must not apply to
-    // a wake aimed at a moment on the clock: clamping a four-minute sleep up to
-    // fifteen leaves an event that already happened sitting on screen until then.
-    // Each candidate therefore carries the floor that goes with it, and only the
-    // winner's floor is applied.
-    int64_t target = now + (int64_t)MAX_SLEEP_MINUTES * 60;
-    int64_t floorSeconds = (int64_t)MIN_SLEEP_MINUTES * 60;
-    // A target in the past is kept rather than skipped -- a boundary that is
-    // already behind us wants the shortest sleep the clamp below allows, not the
-    // next thing on the calendar.
-    auto consider = [&](int64_t when, int64_t floorSec) {
-        if (when < target) {
-            target = when;
-            floorSeconds = floorSec;
-        }
-    };
+    const int64_t boundary =
+        tiEndOfTideDay(tiStartOfTideDay(now, kDayStartHour), kDayStartHour) +
+        DAY_ROLLOVER_SECONDS;
 
-    // The screen covers one tide day, so the whole thing turns over at the day
-    // boundary: new tides, new graph, and the download that provides them.
-    consider(tiEndOfTideDay(tiStartOfTideDay(now, kDayStartHour), kDayStartHour) +
-                 DAY_ROLLOVER_SECONDS,
-             MIN_TIDE_SLEEP_SECONDS);
-
-#if WAKE_FOR_EACH_TIDE
-    // Same guard as cacheUsable()/refreshDue(): .valid alone is unvalidated RTC
-    // memory until the magic says the struct is ours.
-    if (g_cacheMagic == kCacheMagic && g_cache.valid) {
-        // Wake just after the next high or low so the row of tides always has an
-        // event that has not happened yet marked as the next one.
-        const TideExtreme* next = tideNextAny(g_cache, now);
-        if (next) consider(next->time + WAKE_AFTER_TIDE_SECONDS, MIN_TIDE_SLEEP_SECONDS);
-    }
-#endif
-
-    int64_t seconds = target - now;
-    if (seconds < floorSeconds) seconds = floorSeconds;
+    int64_t seconds = boundary - now;
+    if (seconds < MIN_SLEEP_SECONDS) seconds = MIN_SLEEP_SECONDS;
     // Overshoot the target by the oscillator's error budget, so the wake lands
     // after the moment it was aimed at rather than either side of it. Applied
-    // last, and before the ceiling, so it cannot be clamped away.
+    // before the ceiling so it cannot be clamped away.
     seconds += seconds * SLEEP_DRIFT_PERMILLE / 1000;
     if (seconds > (int64_t)MAX_SLEEP_MINUTES * 60) seconds = (int64_t)MAX_SLEEP_MINUTES * 60;
     return seconds;
