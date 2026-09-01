@@ -148,8 +148,8 @@ bool usbAttached() {
     return HWCDC::isPlugged();
 }
 
-int64_t stayAwakeFor(int64_t seconds) {
-    if (seconds > (int64_t)MAX_SLEEP_MINUTES * 60) seconds = (int64_t)MAX_SLEEP_MINUTES * 60;
+int64_t stayAwakeFor(int64_t seconds, int64_t capSeconds) {
+    if (capSeconds > 0 && seconds > capSeconds) seconds = capSeconds;
     if (seconds < 0) seconds = 0;
 
     Serial.printf("[power] USB attached, staying awake %lld s instead of sleeping\n",
@@ -173,6 +173,48 @@ int64_t stayAwakeFor(int64_t seconds) {
     }
 }
 
+// This is as deep as the clock can usefully sleep. The reasoning is worth
+// recording, because the two obvious next moves -- esp_sleep_pd_config() to
+// force domains off by hand, and dropping the RTC memory to "hibernate" and
+// boot fresh each time -- both look like free current and are not.
+//
+//   RTC fast memory   Stays on, and would stay on even if this firmware kept
+//                     nothing in it: ESP-IDF turns the AUTO default into ON
+//                     unconditionally, so that the deep-sleep stub has somewhere
+//                     to run (get_power_down_flags() in sleep_modes.c). The
+//                     cached predictions ride along in a domain that is powered
+//                     either way. Forcing it off is possible, but the C3
+//                     datasheet publishes exactly one deep-sleep figure -- 5 uA,
+//                     "RTC timer + RTC memory", measured with the memory powered
+//                     -- and no hibernation figure at all. The next row down is
+//                     the chip switched off at 1 uA, which cannot wake on a
+//                     timer. So the whole prize is under 4 uA, and in truth much
+//                     less: the RTC timer, the PMU and the RTC watchdog stay up
+//                     either way.
+//   RTC peripherals   Already off. The C3 does not define
+//                     SOC_PM_SUPPORT_RTC_PERIPH_PD at all, so IDF never has a
+//                     reason to hold the domain up and flags it down on every
+//                     sleep. Deep-sleep GPIO wakeup still works: on this chip it
+//                     runs off the always-on VDD3P3_RTC pads, not that domain.
+//   RTC 8 MHz osc     Already off. It is only held up when the slow clock is
+//                     derived from it, and this board's slow clock is the
+//                     150 kHz RC oscillator.
+//   XTAL, CPU, flash  Already off, unconditionally, in deep sleep.
+//
+// The one state genuinely below this is ultra-low-power deep sleep, and it is
+// the wake button that rules it out rather than the cache: IDF sets
+// RTC_SLEEP_NO_ULTRA_LOW unless ultra-low is explicitly enabled, and in
+// ultra-low an RTC IO cannot be used as an input at all.
+//
+// So the retained memory is not buying the chip anything -- it buys the *panel*.
+// Every scheduled wake brings the radio up for NTP and the download anyway, so a
+// good day runs identically either way. It is the bad days that differ: see
+// drawnScreenId() in main.cpp, which is what keeps yesterday's still-valid
+// predictions on screen through a failed refresh instead of a placeholder, and
+// what stops an outage's hourly retries from repainting all 800x480 every hour.
+//
+// The board's own draw is a separate matter and dwarfs all of it -- see the
+// battery-sense divider note in docs/hardware.md.
 void deepSleepFor(int64_t seconds) {
     if (seconds < 60) seconds = 60;
     Serial.printf("[power] sleeping for %lld s\n", (long long)seconds);

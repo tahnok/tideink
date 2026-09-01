@@ -19,8 +19,8 @@ import os
 import urllib.request
 
 API = "https://api-iwls.dfo-mpo.gc.ca/api/v1"
-# Charlottetown, PE -- CHS station 01700.
-DEFAULT_STATION = "5cebf1e33d0f4a073c4bc21f"
+# Ile d'Entree, QC -- CHS station 01966.
+DEFAULT_STATION = "5cebf1e13d0f4a073c4bbf06"
 FIXTURE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "test", "fixtures"))
 
 
@@ -41,7 +41,7 @@ def fetch(station: str, series: str, start: dt.datetime, end: dt.datetime, resol
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--station", default=DEFAULT_STATION)
-    p.add_argument("--name", default="charlottetown")
+    p.add_argument("--name", default="ile_dentree")
     p.add_argument(
         "--from",
         dest="start",

@@ -22,6 +22,10 @@ struct RenderStatus {
 // ahead of you when you first look at it.
 static const int kDayStartHour = 6;
 
+// Fixed graph axis so the visual height of the curve is comparable across days.
+static const int16_t kGraphMinMm = 0;
+static const int16_t kGraphMaxMm = 1400;
+
 void renderTideScreen(Canvas& canvas, const TideData& data, const RenderStatus& status);
 
 // Full-screen fallback used before the first successful download, or when the

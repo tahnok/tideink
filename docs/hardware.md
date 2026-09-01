@@ -89,6 +89,117 @@ mV and the press is invisible.
 There is **no fuel gauge**. The X3's BQ27220 is absent (see the I²C scan below),
 so the percentage can only ever come from the voltage curve.
 
+### The divider is probably what drains the battery
+
+Not measured here, but worth stating plainly, because it changes what firmware is
+even worth optimising. The resistor values are published rather than probed --
+the [open-x4 sample firmware](https://github.com/open-x4-epaper/sample-firmware)
+says "GPIO0 is connected to the battery via a voltage divider (2x10K resistors),
+reading 1/2 of the actual voltage", and
+[Adafruit's X4 pinout](https://learn.adafruit.com/circuitpython-on-the-xteink-x4-ereader/pinouts)
+independently confirms a divider on GPIO0 without giving values. Nobody appears to
+have published a measured sleep current for this board at all.
+
+If 2×10 kΩ is right, that is 20 kΩ across the cell:
+
+| | continuous | per day | from 650 mAh |
+|---|---|---|---|
+| Divider at 2×10 kΩ, cell at 3.9 V | ~195 µA | ~4.7 mAh | ~140 days |
+| ESP32-C3 in deep sleep, RTC memory retained (datasheet) | ~5 µA | ~0.12 mAh | — |
+| One wake a day: boot, download, full refresh | — | ~0.3 mAh | — |
+
+That is arithmetic from a published resistor value and a datasheet figure, not a
+bench reading, so treat the first row as a hypothesis. But if it holds, the
+divider costs more than an order of magnitude more than everything the firmware
+does put together, and no amount of scheduling will move the runtime much. 20 kΩ
+is also aggressive for a battery divider -- hobby boards that care about sleep
+current usually run 2×100 kΩ or higher -- which is itself a hint about where it
+sits in the circuit.
+
+**Which side of the GPIO13 latch is it on?** Unpublished, and it decides both how
+bad this is and what the fix looks like. Downstream of the latch MOSFET, the
+divider only draws while the board is powered, so the stock reader escapes it
+entirely by dropping GPIO13 when the user closes it -- and a tide clock, which
+holds that latch on for ever precisely so it *does* keep running, pays it around
+the clock by design. Upstream, on the cell itself, it drains a shelf-stored X4
+too. Either way the clock pays; only the stock firmware's behaviour differs.
+
+**Measure it before optimising anything else.** Put a meter in series with the
+cell and let the clock go to sleep; the reading settles a few seconds after the
+panel finishes. Roughly 200 µA means the divider dominates and the fix is a
+hardware one -- larger resistors, or a MOSFET gating the bottom leg from a spare
+GPIO so the divider only draws while a reading is being taken. Roughly 5–10 µA
+means the divider is already high-impedance and the firmware schedule is what
+sets the runtime.
+
+For a sense of what the second case looks like, the Inkplate 2 -- an ESP32 e-paper
+board built for exactly this kind of once-a-day sketch -- is
+[specified at 20–30 µA in deep sleep](https://docs.soldered.com/inkplate/2/low-power/deep-sleep/)
+and has **no battery monitoring hardware at all**: `readBattery()` is
+[unsupported on that model](https://inkplate.readthedocs.io/en/latest/arduino.html).
+No divider, no leak, and no battery percentage on screen either. That is the
+trade this board made in the other direction.
+
+### The microSD slot is a power question, not a storage one
+
+There is a microSD slot on the shared SPI bus (CS on GPIO12, MISO on GPIO7,
+SCK/MOSI shared with the panel), and writing a month of predictions to it instead
+of three days into RTC memory is an obvious-looking way to cut the radio down.
+The arithmetic goes the wrong way, and not by a little.
+
+An inserted card is powered whether or not anything ever talks to it. The socket
+has a dedicated **VDD contact** wired to the 3.3 V rail -- the card is not sipping
+parasitically off the SPI lines, it is a live device sitting in a live socket --
+and it draws its idle current from the moment the rail comes up.
+
+How much is entirely down to which card. Measurements from people who chase this
+seriously:
+
+| Card | idle in SPI mode | per day | 650 mAh lasts |
+|---|---|---|---|
+| Sandisk Ultra ([Gough Lui, 2021](https://goughlui.com/2021/02/27/experiment-microsd-card-power-consumption-spi-performance/)) | ~1.25 mA | ~30 mAh | ~3 weeks |
+| Verbatim Premium (same) | ~1.45 mA | ~35 mAh | ~19 days |
+| Genuine Sandisk in a logger ([Cave Pearl, 2014](https://thecavepearlproject.org/2014/09/22/high-sleep-current-problem-solved/)) | 0.2–0.3 mA | 5–7 mAh | 3–4 months |
+| Best sleeper found ([Cave Pearl, 2017](https://thecavepearlproject.org/2017/05/21/switching-off-sd-cards-for-low-power-data-logging/)) | ~70 µA | ~1.7 mAh | ~1 year |
+| Delkin industrial SLC (Gough Lui) | ~0.15 mA | ~3.6 mAh | ~6 months |
+| Counterfeit cards, or pins left floating (Cave Pearl) | 2–5 mA | 48–120 mAh | days |
+
+Against that, the most a card could save is the two HTTPS fetches -- around
+0.15 mAh a day. The clock has to reach NTP daily regardless, because the RC
+oscillator drifts about 1% and nothing on the card fixes that, so the Wi-Fi
+association stays either way. The entire daily wake, boot and radio and full
+panel refresh together, is only about 0.3 mAh.
+
+So a typical consumer card costs **a hundred times** what it would save, and would
+by itself flatten the battery in about three weeks. Even the best-behaved card
+found in years of looking costs ten times the saving. The Cave Pearl loggers hit
+exactly this -- sleeping cards ended up "the largest remaining power consumer" --
+and the answer was to cut power to the card entirely between samples rather than
+to manage its sleep current.
+
+Which is the thing this board may not let us do. Nobody has published whether the
+X4's slot has its own power gate, and the one candidate is GPIO13: the X3 pin map
+calls it **"Power/SD control"**, and on the X4 it is the battery latch this
+firmware has to hold HIGH to run at all. If that is one net, the card cannot be
+powered down without powering the clock down with it.
+
+And gating VDD is not on its own enough. Cut the card's power while the SPI lines
+are still driven and it back-feeds through the protection diodes on CLK/CMD/DAT
+and never actually sleeps -- the Cave Pearl write-up pulls MOSI, MISO and CS up
+and CLK down, simultaneously, before dropping the rail. The related trap is
+floating pins on a *powered* card: Sandisk's own note says the host has to pull
+the unused lines up or "non-expected high current consumption may occur", which is
+where those 2–5 mA readings come from. This board does put external pull-ups on
+GPIO7 and GPIO12 (both probe as driven high), so it is at least not the worst
+case.
+
+So: **if there is a card in the slot, taking it out is almost certainly worth more
+than any firmware change in this repository** -- plausibly more than the battery
+divider too. The same meter test settles it: measure the sleeping current with a
+card in, then with the slot empty. Only if the difference is negligible, or a
+separate gate turns up, is SD worth revisiting; and then it buys robustness across
+a battery swap, which RTC memory genuinely cannot survive, rather than runtime.
+
 ## Charge / USB detect — `config.h` was wrong
 
 GPIO20 is **driven HIGH when USB is attached** and reads **LOW when the cable is

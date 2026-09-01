@@ -3,8 +3,8 @@
 // so the image is pixel-identical to what the X4 displays.
 //
 //   pio run -e sim
-//   .pio/build/sim/program --hilo test/fixtures/charlottetown_hilo.json \
-//                          --wlp  test/fixtures/charlottetown_wlp.json \
+//   .pio/build/sim/program --hilo test/fixtures/ile_dentree_hilo.json \
+//                          --wlp  test/fixtures/ile_dentree_wlp.json \
 //                          --out  docs/screenshots/now.png
 
 #include <stdio.h>
@@ -23,10 +23,10 @@
 namespace {
 
 struct Options {
-    std::string hilo = "test/fixtures/charlottetown_hilo.json";
-    std::string wlp = "test/fixtures/charlottetown_wlp.json";
+    std::string hilo = "test/fixtures/ile_dentree_hilo.json";
+    std::string wlp = "test/fixtures/ile_dentree_wlp.json";
     std::string out = "render.png";
-    std::string station = "CHARLOTTETOWN, PE";
+    std::string station = "ILE D'ENTREE, QC";
     std::string banner;
     std::string message;  // when set, render the fallback screen instead
     int lowBatteryMv = 0;  // when non-zero, render the shutdown screen instead

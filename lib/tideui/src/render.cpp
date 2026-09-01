@@ -203,17 +203,17 @@ void drawGraph(Canvas& c, const TideData& data, const RenderStatus& st, int64_t 
     map.top = plotTop;
     map.height = plotH;
 
-    int16_t lo = 0, hi = 0;
-    if (!tideCurveRange(data, map.from, map.to, lo, hi)) {
-        c.drawTextAligned(kScreenWidth / 2, plotTop + plotH / 2, "no water level predictions",
-                          FontBody, kCenter);
-        return;
+    {
+        int16_t dlo = 0, dhi = 0;
+        if (!tideCurveRange(data, map.from, map.to, dlo, dhi)) {
+            c.drawTextAligned(kScreenWidth / 2, plotTop + plotH / 2, "no water level predictions",
+                              FontBody, kCenter);
+            return;
+        }
     }
-    // Round the axis out to a tidy step so the gridline labels read as 0.2,
-    // 0.4, ... rather than whatever the padded data range happens to be.
-    const int16_t stepMm = niceStepMm(hi - lo);
-    map.minMm = (int16_t)(floorDiv(lo - stepMm / 3, stepMm) * stepMm);
-    map.maxMm = (int16_t)(ceilDiv(hi + stepMm / 3, stepMm) * stepMm);
+    const int16_t stepMm = niceStepMm(kGraphMaxMm - kGraphMinMm);
+    map.minMm = (int16_t)(floorDiv(kGraphMinMm, stepMm) * stepMm);
+    map.maxMm = (int16_t)(ceilDiv(kGraphMaxMm, stepMm) * stepMm);
 
     int16_t nowMm = 0;
     const bool haveNow =

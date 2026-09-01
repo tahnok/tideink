@@ -17,7 +17,7 @@ import sys
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 OUT_DIR = os.path.join(ROOT, "docs", "screenshots")
 
-STATION = "CHARLOTTETOWN, PE"
+STATION = "ILE D'ENTREE, QC"
 
 # name -> extra arguments
 SCENES = {
@@ -65,8 +65,8 @@ def main() -> int:
         out = os.path.join(OUT_DIR, f"{name}.png")
         cmd = [
             args.binary,
-            "--hilo", os.path.join(ROOT, "test", "fixtures", "charlottetown_hilo.json"),
-            "--wlp", os.path.join(ROOT, "test", "fixtures", "charlottetown_wlp.json"),
+            "--hilo", os.path.join(ROOT, "test", "fixtures", "ile_dentree_hilo.json"),
+            "--wlp", os.path.join(ROOT, "test", "fixtures", "ile_dentree_wlp.json"),
             "--station", STATION,
             "--out", out,
         ] + extra
