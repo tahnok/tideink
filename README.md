@@ -3,8 +3,9 @@
 A battery-powered tide clock for the [Xteink X4](https://learn.adafruit.com/circuitpython-on-the-xteink-x4-ereader)
 e-paper reader. It shows one day of tides for **Charlottetown, PE** — every high
 and low, the water level graph they came from, and tonight's moon — using
-official predictions from the Canadian Hydrographic Service. It wakes up a few
-times a day, downloads once a day, and spends the rest of its life in deep sleep.
+official predictions from the Canadian Hydrographic Service. It wakes once a
+day, downloads and redraws in that one wake, and spends the rest of its life in
+deep sleep.
 
 ![The tide clock screen](docs/screenshots/01-morning.png)
 
@@ -90,6 +91,11 @@ whenever the clock finishes a wake cycle with a USB host attached, it waits the
 schedule out awake rather than sleeping, so the port stays enumerated and
 `pio run -e x4 -t upload` can reset the chip into its bootloader by itself.
 
+The wait is capped at `USB_AWAKE_MAX_MINUTES` (6 hours) rather than running the
+full day the schedule now asks for, because the restart at the end of it clears
+RTC memory along with the cached predictions — so the cap is also how often a
+plugged-in clock re-downloads and redraws.
+
 The clock still has to be *awake* to notice the cable. GPIO20 is the
 charge-detect line, and the C3 can only wake from deep sleep on GPIO 0–5, so
 plugging in cannot wake it on its own — **tap the front button once** after
@@ -136,36 +142,117 @@ python3 tools/fetch_fixtures.py --from 2026-08-08 --hours 72
 
 ## How it runs on a battery
 
-Every wake-up does the same short sequence and then goes straight back to deep
-sleep:
+**The clock wakes once a day.** The screen shows a tide day running 6 am to
+6 am, so that boundary is the only moment the drawing has to change — and the
+single wake that happens there does everything at once:
 
 1. Read the battery divider and the charge-detect pin.
-2. Decide whether the cached predictions are still usable — is the clock set, is
-   the cache younger than `DATA_REFRESH_HOURS`, does it still contain a next
-   high, a next low, and a curve covering right now?
-3. If not, bring up Wi-Fi, sync NTP, download both series, drop the radio.
-4. Redraw the panel from the cache.
-5. Sleep until the next interesting moment — or, on USB, stay awake until it
-   instead, so the port stays flashable (see
-   [Flashing](#flashing-without-the-button-dance)).
+2. Bring up Wi-Fi, sync NTP, download both series, drop the radio.
+3. Redraw the panel from the fresh data.
+4. Sleep until tomorrow — or, on USB, stay awake instead so the port stays
+   flashable (see [Flashing](#flashing-without-the-button-dance)).
 
-The dataset lives in **RTC memory** (about 1.2 kB — heights are stored as
-millimetre integers), so it survives deep sleep and a redraw costs no network at
-all. The radio is powered for roughly ten seconds a day.
+That is **one radio session and one full-panel refresh per 24 hours**, and
+nothing at all in between. The dataset lives in **RTC memory** (about 1.2 kB —
+heights are stored as millimetre integers), so it survives deep sleep and any
+wake that does not need the network costs nothing but the boot. Pressing the
+front panel button wakes it early and forces a fresh download.
 
-"The next interesting moment" is whichever comes first of: just after the next
-high or low, so the row of tides always marks one that has not happened yet;
-6 am, when the whole screen turns over to the next day; or the next scheduled
-download. That is clamped to `[MIN_SLEEP_MINUTES, MAX_SLEEP_MINUTES]` — 15
-minutes to 6 hours by default — which works out to a handful of full-panel
-refreshes a day. Pressing the front panel button wakes it early and forces a
-fresh download.
+What one wake a day gives up is everything on the screen that follows the clock
+rather than the calendar: the cursor on the graph, the `now N.N m above chart
+datum` readout, and the bar marking the next tide due are all true at the moment
+of the draw and drift through the day. That is the trade, and it is deliberate —
+waking for each high and low instead would keep that bar honest at the cost of
+four or five more full-panel refreshes a day.
+
+### Waking at the right time without a crystal
+
+The board has no 32.768 kHz crystal, so deep sleep is timed by the C3's internal
+RC oscillator, which lands **within about 1%** of the duration it was asked for
+(and worse away from room temperature — see
+[`docs/hardware.md`](docs/hardware.md)). Over a 24 hour sleep 1% is a quarter of
+an hour either way, which is enough to end the sleep *before* 6 am and find
+yesterday still on screen.
+
+The clock cannot simply check and go back to sleep, either. The RTC it would
+check against is the thing that drifted, so `time()` reads 6 am on the nose
+whichever way the oscillator went; only the NTP sync a few seconds into the
+refresh reveals that it is really 5:45, by which point the radio session has
+been spent. So two things handle it:
+
+- Every sleep is padded by `SLEEP_DRIFT_PERMILLE` (1%) of its own length, which
+  buys back the drift and puts the wake on the late side of the moment it was
+  aimed at. The screen turns over a quarter of an hour or so after 6 am rather
+  than on the dot; that is the price of not paying for a second wake to correct
+  the first.
+- If the oscillator overshoots even that, the redraw is skipped rather than
+  botched. The clock fingerprints what it last put on the panel, and a wake
+  whose tide day comes back the same puts the panel down again instead of
+  redrawing yesterday and sitting on it for another day.
+
+The same fingerprint is what makes a Wi-Fi outage cheap. A failed refresh
+retries every `RETRY_SLEEP_MINUTES` rather than waiting a day, but each retry
+draws the *same* "no tide predictions yet" screen — so it is drawn once and the
+retries after it leave the panel alone. In simulation, four days of outage cost
+three panel refreshes rather than seventy-seven.
+
+### How deep the sleep goes
+
+As deep as it usefully can. Two things look like free current here and are not.
+
+**Forcing power domains off by hand** (`esp_sleep_pd_config`) has nothing left to
+switch off. On the C3 the RTC peripherals domain is flagged down on every sleep —
+the chip does not even define `SOC_PM_SUPPORT_RTC_PERIPH_PD`, and deep-sleep GPIO
+wakeup runs off the always-on pads instead — the 8 MHz oscillator goes down
+because the slow clock is the 150 kHz RC one, and XTAL, CPU and flash go down
+unconditionally. The one state genuinely below this is ultra-low-power deep
+sleep, and the wake button rules that out on its own: an RTC IO cannot be used as
+an input in ultra-low mode.
+
+**Hibernating and booting fresh each time** is the sharper idea, because every
+scheduled wake brings the radio up for NTP and the download anyway — so what is
+the cached data doing? On a good day, nothing: simulated over 60 clean days,
+retaining and hibernating are identical, 61 refreshes and 61 radio sessions
+either way. But it does not save anything either:
+
+- The memory is powered whether or not the firmware uses it. ESP-IDF turns the
+  `AUTO` default for RTC fast memory into `ON` unconditionally, so the
+  deep-sleep stub has somewhere to run. The 1.2 kB cache rides along for free.
+- The ESP32-C3 datasheet publishes exactly one deep-sleep figure — **5 µA,
+  "RTC timer + RTC memory"**, measured with the memory powered — and no
+  hibernation figure at all. The next row down is the chip switched off at 1 µA,
+  which cannot wake on a timer. So the entire prize is under 4 µA, and really
+  much less, since the RTC timer, PMU and RTC watchdog stay up either way.
+
+What the retained memory buys is the panel on the bad days, not the chip on the
+good ones. Simulated over 30 days with Wi-Fi down for four of them: retaining
+costs 30 panel refreshes, only one of which is the "no tide predictions yet"
+placeholder — the rest show yesterday's still-valid predictions under a warning
+strip. Hibernating costs 104 refreshes, 76 of them the placeholder. Same for an
+oscillator that overshoots the drift pad: 61 refreshes over 60 days retaining,
+121 hibernating, because a clock that remembers nothing cannot tell that it has
+already drawn today.
+
+`deepSleepFor()` in [`src/device/power.cpp`](src/device/power.cpp) records all of
+this next to the code.
+
+**The board's own draw is the part that actually sets the runtime**, and it is
+not something firmware can reach. If the battery-sense divider is the 2×10 kΩ the
+open-x4 sample firmware describes, it hangs ~195 µA across the cell — around
+forty times the sleeping chip, and more than everything the firmware does put
+together. That figure is arithmetic from a published resistor value, not a bench
+reading; nobody appears to have measured this board's sleep current. Measure it
+before optimising anything else.
+[`docs/hardware.md`](docs/hardware.md#the-divider-is-probably-what-drains-the-battery)
+has the arithmetic, the sources, and what to do about each outcome.
 
 Because the graph is pinned to the day rather than to the download, the
 requested window has to reach a full day either side of it: a download landing
-a minute before 6 am is already drawing a day that started 24 hours earlier,
-and the last redraw before the next download is a day further on again. That is
-what `CURVE_HOURS_BEFORE`/`CURVE_HOURS_AFTER` are sized for.
+a minute before 6 am is already drawing a day that started 24 hours earlier.
+That is what `CURVE_HOURS_BEFORE`/`CURVE_HOURS_AFTER` are sized for, and the
+slack past that is what lets the clock ride out a day of Wi-Fi outage —
+yesterday's download still covers the whole of today's tide day, so the screen
+stays right while the hourly retry keeps trying.
 
 If a download fails the previous cache is kept untouched and the screen gets a
 warning strip instead.
